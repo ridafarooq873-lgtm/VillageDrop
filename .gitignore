@@ -3,3 +3,7 @@
 dist
 build
 
+# Uploaded receipts and delivery proofs (keep the folder, ignore the files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
