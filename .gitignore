@@ -2,4 +2,6 @@
 .env
 dist
 build
+.mongo-data
+backend/.mongo-data
 

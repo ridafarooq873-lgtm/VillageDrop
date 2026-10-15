@@ -1,0 +1,25 @@
+.register-card {
+  max-width: 800px;
+}
+
+.register-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.form-section {
+  flex: 1 1 300px;
+}
+
+.form-section h3 {
+  margin-bottom: 1.5rem;
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--background-color);
+  padding-bottom: 0.5rem;
+}
+
+.form-actions {
+  width: 100%;
+  margin-top: 1rem;
+}
