@@ -16,7 +16,9 @@ const startEmbeddedDb = async () => {
   // Lazy require so the package is only needed for local development.
   const { MongoMemoryServer } = require('mongodb-memory-server');
 
-  const dbPath = path.join(__dirname, '..', '.mongo-data');
+  // MONGO_DB_PATH lets tests/parallel instances use their own data dir so
+  // concurrent mongod processes never fight over the WiredTiger lock.
+  const dbPath = process.env.MONGO_DB_PATH || path.join(__dirname, '..', '.mongo-data');
   const baseOptions = { instance: { dbName: 'village_drop', storageEngine: 'wiredTiger' } };
 
   try {

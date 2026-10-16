@@ -9,6 +9,7 @@ const Complaint = require('../models/Complaint');
 const Notification = require('../models/Notification');
 const calculateFee = require('../utils/calculateFee');
 const generatePin = require('../utils/generatePin');
+const { applyStatusChange } = require('../services/orderStatusService');
 
 const router = express.Router();
 
@@ -94,59 +95,73 @@ router.post(
       let hasFragile = false;
       let hasElectronics = false;
       
-      const newOrder = new Order({
-        customer: req.user.id,
-        orderType: orderType || 'pickup_delivery',
-        pickup,
-        delivery,
-        paymentMethod: paymentMethod || 'cod',
-        purchaseDetails: isRAP ? purchaseDetails : undefined,
-        deliveryFee: 0, 
-        totalAmount: 0, 
-        deliveryPin: generatePin(),
-        trackingUpdates: [
-          { status: 'pending', note: 'Order created successfully' }
-        ]
-      });
+      let newOrder;
+      try {
+        newOrder = new Order({
+          customer: req.user.id,
+          orderType: orderType || 'pickup_delivery',
+          pickup,
+          delivery,
+          paymentMethod: paymentMethod || 'cod',
+          purchaseDetails: isRAP ? purchaseDetails : undefined,
+          deliveryFee: 0, 
+          totalAmount: 0, 
+          deliveryPin: generatePin(),
+          trackingUpdates: [
+            { status: 'pending', note: 'Order created successfully' }
+          ]
+        });
 
-      await newOrder.save();
-      
-      const createdItems = [];
-      if (items && items.length > 0) {
-        for (const itemData of items) {
-          const item = new OrderItem({
-            order: newOrder._id,
-            ...itemData
-          });
-          await item.save();
-          createdItems.push(item._id);
-          
-          totalWeight += (itemData.weight || 0) * (itemData.quantity || 1);
-          if (itemData.fragile) hasFragile = true;
-          if (itemData.category === 'electronics') hasElectronics = true;
+        await newOrder.save();
+        
+        const createdItems = [];
+        if (items && items.length > 0) {
+          for (const itemData of items) {
+            const item = new OrderItem({
+              order: newOrder._id,
+              ...itemData
+            });
+            await item.save();
+            createdItems.push(item._id);
+            
+            totalWeight += (itemData.weight || 0) * (itemData.quantity || 1);
+            if (itemData.fragile) hasFragile = true;
+            if (itemData.category === 'electronics') hasElectronics = true;
+          }
         }
+        
+        let fee = calculateFee({
+          distance,
+          weight: totalWeight,
+          category: hasElectronics ? 'electronics' : 'parcel',
+          isFragile: hasFragile
+        });
+
+        // Additional service fee for RAP
+        if (isRAP) {
+          fee += 20;
+        }
+
+        newOrder.items = createdItems;
+        newOrder.deliveryFee = fee;
+        
+        // Calculate total amount (Fee + Estimated Item Cost for RAP)
+        const estimatedCost = isRAP && purchaseDetails && purchaseDetails.estimatedItemCost ? purchaseDetails.estimatedItemCost : 0;
+        newOrder.totalAmount = fee + estimatedCost; 
+
+        await newOrder.save();
+      } catch (innerErr) {
+        // Roll back the partially-created order so validation failures
+        // (e.g. bad item category) don't leave orphaned records.
+        if (newOrder && newOrder._id) {
+          await OrderItem.deleteMany({ order: newOrder._id }).catch(() => {});
+          await Order.deleteOne({ _id: newOrder._id }).catch(() => {});
+        }
+        if (innerErr.name === 'ValidationError') {
+          return res.status(400).json({ success: false, message: innerErr.message });
+        }
+        throw innerErr;
       }
-      
-      let fee = calculateFee({
-        distance,
-        weight: totalWeight,
-        category: hasElectronics ? 'electronics' : 'parcel',
-        isFragile: hasFragile
-      });
-
-      // Additional service fee for RAP
-      if (isRAP) {
-        fee += 20;
-      }
-
-      newOrder.items = createdItems;
-      newOrder.deliveryFee = fee;
-      
-      // Calculate total amount (Fee + Estimated Item Cost for RAP)
-      const estimatedCost = isRAP && purchaseDetails && purchaseDetails.estimatedItemCost ? purchaseDetails.estimatedItemCost : 0;
-      newOrder.totalAmount = fee + estimatedCost; 
-
-      await newOrder.save();
 
       const populatedOrder = await Order.findById(newOrder._id).populate('items');
 
@@ -236,24 +251,15 @@ router.put('/orders/:id/cancel', async (req, res) => {
 
     const { reason } = req.body;
 
-    order.status = 'cancelled';
-    order.cancellation = {
+    const updatedOrder = await applyStatusChange(order, 'cancelled', {
+      actor: 'customer',
       reason: reason || 'Customer requested cancellation',
-      cancelledBy: 'customer',
-      cancelledAt: Date.now(),
-      refundStatus: order.paymentStatus === 'paid' ? 'pending' : 'na'
-    };
-    
-    order.trackingUpdates.push({
-      status: 'cancelled',
       note: 'Order cancelled by customer'
     });
 
-    await order.save();
-
     res.status(200).json({
       success: true,
-      data: order
+      data: updatedOrder
     });
   } catch (err) {
     console.error(err.message);

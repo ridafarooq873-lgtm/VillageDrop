@@ -80,14 +80,14 @@ userSchema.methods.comparePassword = async function (enteredPassword) {
 // Generate Access Token
 userSchema.methods.generateAuthToken = function () {
   return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
+    expiresIn: process.env.JWT_EXPIRE || '1d'
   });
 };
 
 // Generate Refresh Token
 userSchema.methods.generateRefreshToken = function () {
-  return jwt.sign({ id: this._id }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRE
+  return jwt.sign({ id: this._id }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d'
   });
 };
 

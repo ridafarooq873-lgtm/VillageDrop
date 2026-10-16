@@ -1,0 +1,13 @@
+.footer {
+  background-color: var(--primary-dark);
+  color: var(--white);
+  margin-top: auto;
+}
+
+.footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem;
+  text-align: center;
+  font-size: 0.9rem;
+}

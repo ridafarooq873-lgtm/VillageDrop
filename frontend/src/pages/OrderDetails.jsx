@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Package, MapPin, Phone, CreditCard, User, XCircle, ShoppingCart, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getOrderById, cancelOrder, submitReview } from '../api/customerApi';
+import { useSocket } from '../context/SocketContext';
 import StatusBadge from '../components/StatusBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
 import TrackingTimeline from '../components/TrackingTimeline';
@@ -12,6 +13,7 @@ const CANCELLABLE = ['pending', 'confirmed'];
 
 const OrderDetails = () => {
   const { id } = useParams();
+  const { socket } = useSocket();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [review, setReview] = useState({ rating: 5, comment: '' });
@@ -34,6 +36,40 @@ const OrderDetails = () => {
   useEffect(() => {
     fetchOrder();
   }, [fetchOrder]);
+
+  // Real-time: join the order room and apply live status updates
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    const joinRoom = () => socket.emit('joinOrderRoom', id);
+    const leaveRoom = () => socket.emit('leaveOrderRoom', id);
+
+    socket.on('connect', joinRoom);
+    if (socket.connected) joinRoom();
+
+    const onStatusUpdate = (payload) => {
+      if (!payload || String(payload.orderId) !== String(id)) return;
+      if (payload.updatedOrder) {
+        setOrder(payload.updatedOrder);
+      } else {
+        fetchOrder();
+      }
+    };
+
+    socket.on('orderStatusUpdated', onStatusUpdate);
+    socket.on('orderAccepted', onStatusUpdate);
+    socket.on('orderPicked', onStatusUpdate);
+    socket.on('orderDelivered', onStatusUpdate);
+
+    return () => {
+      leaveRoom();
+      socket.off('connect', joinRoom);
+      socket.off('orderStatusUpdated', onStatusUpdate);
+      socket.off('orderAccepted', onStatusUpdate);
+      socket.off('orderPicked', onStatusUpdate);
+      socket.off('orderDelivered', onStatusUpdate);
+    };
+  }, [socket, id, fetchOrder]);
 
   const handleCancel = async () => {
     setCancelling(true);

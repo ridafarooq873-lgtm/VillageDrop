@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -16,27 +17,29 @@ import './App.css';
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <div className="app-container">
-          <Navbar />
-          <main className="main-content">
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
+      <SocketProvider>
+        <Router>
+          <div className="app-container">
+            <Navbar />
+            <main className="main-content">
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
 
-              <Route element={<ProtectedRoute />}>
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/orders" element={<OrderHistory />} />
-                <Route path="/orders/new" element={<CreateOrder />} />
-                <Route path="/orders/:id" element={<OrderDetails />} />
-              </Route>
-            </Routes>
-          </main>
-          <Footer />
-        </div>
-        <Toaster position="top-right" />
-      </Router>
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/orders" element={<OrderHistory />} />
+                  <Route path="/orders/new" element={<CreateOrder />} />
+                  <Route path="/orders/:id" element={<OrderDetails />} />
+                </Route>
+              </Routes>
+            </main>
+            <Footer />
+          </div>
+          <Toaster position="top-right" />
+        </Router>
+      </SocketProvider>
     </AuthProvider>
   );
 }
