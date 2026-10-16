@@ -6,7 +6,7 @@
  */
 export function emitOrderUpdate(io, orderId, payload) {
   if (!io || !orderId) return
-  io.to(orderId).emit('order:update', { orderId, ...payload })
+  io.to(`order_${orderId}`).emit('order:update', { orderId, ...payload })
 }
 
 /**

@@ -73,7 +73,7 @@ export default function Layout() {
       {error && <div className="banner banner-rejected">{error}</div>}
 
       <nav className="tabs">
-        <NavLink to="/" end className="tab">
+        <NavLink to="/dashboard" end className="tab">
           Dashboard
         </NavLink>
         <NavLink to="/requests" className="tab">

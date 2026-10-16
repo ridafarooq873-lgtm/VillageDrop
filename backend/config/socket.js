@@ -78,7 +78,7 @@ export function initSocket(httpServer, { origin = process.env.CLIENT_URL || '*' 
           authorized = Boolean(rider && await Order.exists({ _id: orderId, rider: rider._id }))
         }
         if (!authorized) return
-        socket.join(String(orderId))
+        socket.join(`order_${String(orderId)}`)
       } catch (error) {
         console.error('[socket] failed to authorize order room:', error)
       }
@@ -86,7 +86,7 @@ export function initSocket(httpServer, { origin = process.env.CLIENT_URL || '*' 
 
     socket.on('leave:order', (orderId) => {
       if (orderId) {
-        socket.leave(String(orderId))
+        socket.leave(`order_${String(orderId)}`)
         console.log(`[socket] ${socket.id} left order:${orderId}`)
       }
     })
@@ -145,7 +145,7 @@ export function getIO() {
 export function emitOrderEvent(orderId, event, payload = {}) {
   if (!ioInstance || !orderId) return
   const body = { orderId: String(orderId), ...payload }
-  ioInstance.to(String(orderId)).emit(event, body)
+  ioInstance.to(`order_${String(orderId)}`).emit(event, body)
   ioInstance.to(ADMIN_ROOM).emit(event, body)
 }
 

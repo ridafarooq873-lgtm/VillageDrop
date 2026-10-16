@@ -78,9 +78,16 @@ initSocket(httpServer, { origin: clientUrl })
 
 const PORT = process.env.PORT || 5000
 
-connectDB(process.env.MONGO_URI).then(async () => {
+async function startServer() {
+  await connectDB()
   await loadFeeConfig()
   httpServer.listen(PORT, () => {
     console.log(`[server] listening on http://localhost:${PORT}`)
   })
+}
+
+startServer().catch((error) => {
+  console.error('[server] Failed to start:', error.message)
+  process.exitCode = 1
+  httpServer.close()
 })

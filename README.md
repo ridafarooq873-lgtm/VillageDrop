@@ -15,7 +15,7 @@ over Socket.IO.
 - Node.js 18+ (tested on Node 24)
 - npm
 
-MongoDB must be running locally or provided through `MONGO_URI`; this branch
+MongoDB must be running locally or provided through `MONGODB_URI`; this branch
 does not start an embedded database.
 
 ---
@@ -39,7 +39,7 @@ npm install --prefix frontend
 | `NODE_ENV` | `development` enables request logging | `development` |
 | `JWT_SECRET` | Signing key for access tokens | — (required) |
 | `JWT_EXPIRES_IN` | Access token lifetime | `7d` |
-| `MONGO_URI` | MongoDB connection URI | `mongodb://127.0.0.1:27017/villagedrop` |
+| `MONGODB_URI` | MongoDB connection URI | Set in `backend/.env` |
 | `ADMIN_BOOTSTRAP_KEY` | One-time key used to create the first admin account (minimum 32 characters) | — |
 
 Refresh tokens are generated as random opaque values, stored hashed in MongoDB,
@@ -251,7 +251,8 @@ Backend JavaScript syntax can be checked with `node --check` on files in
 ## Troubleshooting
 
 **MongoDB connection fails**
-Ensure a MongoDB server is running and `MONGO_URI` in `backend/.env` is correct.
+Ensure `MONGODB_URI` in `backend/.env` is correct and the Atlas network access
+list allows your current IP address.
 
 **`JWT_SECRET` is not configured**
 Set a long, random `JWT_SECRET` in `backend/.env` before starting the backend.

@@ -13,7 +13,7 @@ import { connectDB } from './config/db.js'
 
 const seed = async () => {
   try {
-    await connectDB(process.env.MONGO_URI)
+    await connectDB()
 
     // Deterministic dev seed - clear the collections we populate
     await Promise.all([

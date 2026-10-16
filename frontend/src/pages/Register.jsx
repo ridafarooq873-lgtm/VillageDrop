@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const EMPTY = {
@@ -15,13 +15,23 @@ const EMPTY = {
 }
 
 export default function Register() {
-  const { register, token, loading } = useAuth()
+  const { register, token, user, loading } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState(EMPTY)
+  const [searchParams] = useSearchParams()
+  const [form, setForm] = useState(() => ({
+    ...EMPTY,
+    role: searchParams.get('role') === 'rider' ? 'rider' : 'customer',
+  }))
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (!loading && token) return <Navigate to="/" replace />
+  const home = form.role === 'customer' ? '/customer' : '/dashboard'
+  const accountHome = user?.role === 'admin'
+    ? '/admin'
+    : user?.role === 'customer'
+      ? '/customer'
+      : '/dashboard'
+  if (!loading && token) return <Navigate to={accountHome} replace />
 
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
 
@@ -31,7 +41,7 @@ export default function Register() {
     setBusy(true)
     try {
       await register(form, form.role)
-      navigate(form.role === 'customer' ? '/customer' : '/', { replace: true })
+      navigate(home, { replace: true })
     } catch (err) {
       setError(err.message)
     } finally {

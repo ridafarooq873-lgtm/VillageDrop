@@ -10,7 +10,11 @@ export default function Login() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const home = user?.role === 'admin' ? '/admin' : user?.role === 'customer' ? '/customer' : '/'
+  const home = user?.role === 'admin'
+    ? '/admin'
+    : user?.role === 'customer'
+      ? '/customer'
+      : '/dashboard'
   if (!loading && token) return <Navigate to={home} replace />
 
   const submit = async (e) => {
@@ -21,7 +25,11 @@ export default function Login() {
       const data = await login(form.email, form.password)
       navigate(
         location.state?.from?.pathname ||
-          (data.user?.role === 'admin' ? '/admin' : data.user?.role === 'customer' ? '/customer' : '/'),
+          (data.user?.role === 'admin'
+            ? '/admin'
+            : data.user?.role === 'customer'
+              ? '/customer'
+              : '/dashboard'),
         { replace: true }
       )
     } catch (err) {

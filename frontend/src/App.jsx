@@ -5,6 +5,7 @@ import CustomerLayout from './components/CustomerLayout.jsx'
 import AdminLayout from './components/AdminLayout.jsx'
 import Login from './pages/Login.jsx'
 import Register from './pages/Register.jsx'
+import LandingPage from './pages/LandingPage.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import CustomerDashboard from './pages/CustomerDashboard.jsx'
 import CreateOrder from './pages/CreateOrder.jsx'
@@ -27,6 +28,7 @@ import AdminMonitoring from './pages/admin/AdminMonitoring.jsx'
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
 
@@ -46,7 +48,7 @@ export default function App() {
 
       <Route element={<ProtectedRoute roles={['rider']} />}>
         <Route element={<Layout />}>
-          <Route index element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="requests" element={<AvailableRequests />} />
           <Route path="active" element={<ActiveDeliveries />} />
           <Route path="active/:orderId/purchase" element={<PurchaseWorkflow />} />
