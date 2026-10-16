@@ -22,7 +22,7 @@ export const userRoom = (userId) => `user:${userId}`
  * `rider:<id>` room when the client asks for it.
  *
  * @param {import('http').Server} httpServer
- * @param {{origin?: string}} options
+ * @param {{origin?: string|string[]}} options
  */
 export function initSocket(httpServer, { origin = process.env.CLIENT_URL || '*' } = {}) {
   const io = new Server(httpServer, {

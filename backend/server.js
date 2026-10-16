@@ -18,12 +18,14 @@ const app = express()
 const httpServer = http.createServer(app)
 
 // CORS
-const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
-const allowedClientOrigins = new Set([clientUrl])
-if (process.env.NODE_ENV !== 'production') {
-  allowedClientOrigins.add('http://localhost:5173')
-  allowedClientOrigins.add('http://127.0.0.1:5173')
-}
+const allowedClientOrigins = new Set([
+  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL,
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+].filter(Boolean))
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedClientOrigins.has(origin)) return callback(null, true)
