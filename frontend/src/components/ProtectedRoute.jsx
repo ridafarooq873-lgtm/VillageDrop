@@ -1,25 +1,28 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
-import LoadingSpinner from './LoadingSpinner';
-import { roleHomePath } from '../utils/roleRoutes';
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext.jsx'
+import Spinner from './Spinner.jsx'
 
-const ProtectedRoute = ({ roles }) => {
-  const { user, token, loading } = useAuth();
-  const location = useLocation();
+/**
+ * Auth gate for routes.
+ * - `roles`: restrict to those roles; others are sent to their own home.
+ * - Without `roles`: admins are redirected to the admin portal (the rider
+ *   shell is never shown to them); all other signed-in roles may proceed.
+ */
+export default function ProtectedRoute({ roles }) {
+  const { token, loading, user } = useAuth()
+  const location = useLocation()
 
-  if (loading) {
-    return <LoadingSpinner label="Loading your account..." />;
+  if (loading) return <Spinner label="Loading your account…" />
+  if (!token) return <Navigate to="/login" replace state={{ from: location }} />
+
+  if (roles) {
+    if (!roles.includes(user?.role)) {
+      const home = user?.role === 'admin' ? '/admin' : user?.role === 'customer' ? '/customer' : '/'
+      return <Navigate to={home} replace />
+    }
+  } else if (user?.role === 'admin') {
+    return <Navigate to="/admin" replace />
   }
 
-  if (!token || !user) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
-  }
-
-  if (roles && !roles.includes(user.role)) {
-    return <Navigate to={roleHomePath(user.role)} replace />;
-  }
-
-  return <Outlet />;
-};
-
-export default ProtectedRoute;
+  return <Outlet />
+}

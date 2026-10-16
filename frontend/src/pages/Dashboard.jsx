@@ -1,118 +1,74 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Package, Truck, CheckCircle, IndianRupee } from 'lucide-react';
-import { getDashboard } from '../api/customerApi';
-import { useAuth } from '../hooks/useAuth';
-import StatusBadge from '../components/StatusBadge';
-import LoadingSpinner from '../components/LoadingSpinner';
-import toast from 'react-hot-toast';
-import './Dashboard.css';
+import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext.jsx'
+import { useRealtimeTick } from '../context/SocketContext.jsx'
+import StatusBadge from '../components/StatusBadge.jsx'
 
-const Dashboard = () => {
-  const { user } = useAuth();
-  const [stats, setStats] = useState(null);
-  const [recentOrders, setRecentOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function Dashboard() {
+  const { rider, isApproved, refresh } = useAuth()
+  const tick = useRealtimeTick('delivery:update', 'order:update', 'approval:update')
 
+  // Keep delivery stats and approval status live
   useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const { data } = await getDashboard();
-        setStats(data.data.stats);
-        setRecentOrders(data.data.recentOrders || []);
-      } catch {
-        toast.error('Failed to load dashboard data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDashboard();
-  }, []);
+    if (tick) refresh()
+  }, [tick, refresh])
 
-  if (loading) return <LoadingSpinner />;
+  const stats = [
+    { label: 'Total deliveries', value: rider?.totalDeliveries ?? 0 },
+    { label: 'Completed', value: rider?.completedDeliveries ?? 0 },
+    { label: 'Rating', value: rider?.rating ? rider.rating.toFixed(1) : '—' },
+  ]
 
   return (
-    <div className="dashboard-container">
-      <header className="dashboard-header">
-        <h1>Welcome back, {user?.name}!</h1>
-        <div className="dashboard-actions">
-          <Link to="/orders/new" className="btn btn-primary">New Order</Link>
-          <Link to="/orders" className="btn btn-outline">View All Orders</Link>
+    <div className="page">
+      <div className="card">
+        <div className="card-head">
+          <h2>Rider status</h2>
+          <StatusBadge status={isApproved ? 'delivered' : 'pending'} />
         </div>
-      </header>
+        <dl className="kv">
+          <div>
+            <dt>Rider ID</dt>
+            <dd>{rider?.riderId || '—'}</dd>
+          </div>
+          <div>
+            <dt>Vehicle</dt>
+            <dd style={{ textTransform: 'capitalize' }}>{rider?.vehicleType || '—'}</dd>
+          </div>
+          <div>
+            <dt>Approval</dt>
+            <dd style={{ textTransform: 'capitalize' }}>{rider?.approvalStatus || 'pending'}</dd>
+          </div>
+          <div>
+            <dt>Availability</dt>
+            <dd>{rider?.isOnline ? 'Online' : 'Offline'}</dd>
+          </div>
+        </dl>
+      </div>
 
-      <section className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon"><Package size={24} /></div>
-          <div className="stat-details">
-            <h3>Total Orders</h3>
-            <p className="stat-value">{stats?.totalOrders || 0}</p>
+      <div className="stat-row">
+        {stats.map((s) => (
+          <div className="stat" key={s.label}>
+            <span className="stat-value">{s.value}</span>
+            <span className="stat-label">{s.label}</span>
           </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon"><Truck size={24} /></div>
-          <div className="stat-details">
-            <h3>Active Orders</h3>
-            <p className="stat-value">{stats?.activeOrders || 0}</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon"><CheckCircle size={24} /></div>
-          <div className="stat-details">
-            <h3>Completed</h3>
-            <p className="stat-value">{stats?.completedOrders || 0}</p>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon"><IndianRupee size={24} /></div>
-          <div className="stat-details">
-            <h3>Total Spent</h3>
-            <p className="stat-value">₹{stats?.totalSpent || 0}</p>
-          </div>
-        </div>
-      </section>
+        ))}
+      </div>
 
-      <section className="recent-orders">
-        <h2>Recent Orders</h2>
-        <div className="table-responsive">
-          <table className="orders-table">
-            <thead>
-              <tr>
-                <th>Order</th>
-                <th>Type</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Amount</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentOrders.length > 0 ? (
-                recentOrders.map((order) => (
-                  <tr key={order._id}>
-                    <td>#{order.orderNumber || order._id.slice(-6).toUpperCase()}</td>
-                    <td>
-                      {order.orderType === 'rider_assisted_purchase' ? 'Purchase' : 'Delivery'}
-                    </td>
-                    <td>{new Date(order.createdAt).toLocaleDateString()}</td>
-                    <td><StatusBadge status={order.status} /></td>
-                    <td>₹{order.totalAmount}</td>
-                    <td>
-                      <Link to={`/orders/${order._id}`} className="link-action">View</Link>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="6" className="empty-state">No recent orders found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <div className="quick-links">
+        <Link className="quick" to="/requests">
+          <strong>Available requests</strong>
+          <span>Browse nearby orders ready for pickup</span>
+        </Link>
+        <Link className="quick" to="/active">
+          <strong>Active deliveries</strong>
+          <span>Track and progress your current orders</span>
+        </Link>
+        <Link className="quick" to="/completed">
+          <strong>Completed</strong>
+          <span>Review your delivery history</span>
+        </Link>
+      </div>
     </div>
-  );
-};
-
-export default Dashboard;
+  )
+}

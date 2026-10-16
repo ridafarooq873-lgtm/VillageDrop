@@ -1,37 +1,54 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+import jwt from 'jsonwebtoken'
+import User from '../models/User.js'
 
-const protect = async (req, res, next) => {
-  let token;
-
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(' ')[1];
-
-      // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-      // Get user from the token
-      req.user = await User.findById(decoded.id).select('-password');
-      
-      if (!req.user) {
-        return res.status(401).json({ success: false, message: 'Not authorized, user not found' });
-      }
-
-      next();
-    } catch (error) {
-      console.error(error);
-      return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
+/**
+ * Verify JSON Web Token and attach user info to request.
+ * Expects header: Authorization: Bearer <token>
+ *
+ * Role and account status are re-read from the DB so admin actions
+ * (deactivation, role changes) take effect immediately, not at token expiry.
+ */
+export async function protect(req, res, next) {
+  try {
+    const header = req.headers.authorization
+    if (!header || !header.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Not authorized, no token' })
     }
-  }
 
-  if (!token) {
-    res.status(401).json({ success: false, message: 'Not authorized, no token' });
-  }
-};
+    const token = header.split(' ')[1]
+    if (!token) {
+      return res.status(401).json({ message: 'Not authorized, token missing' })
+    }
 
-module.exports = { protect };
+    const secret = process.env.JWT_SECRET
+    if (!secret) {
+      console.error('[auth] JWT_SECRET is not set')
+      return res.status(500).json({ message: 'Server configuration error' })
+    }
+
+    const decoded = jwt.verify(token, secret) // { id, role, ... }
+
+    const user = await User.findById(decoded.id).select('role isActive name email').lean()
+    if (!user) {
+      return res.status(401).json({ message: 'Not authorized, account no longer exists' })
+    }
+    if (!user.isActive) {
+      return res
+        .status(403)
+        .json({ message: 'Account is deactivated. Contact an administrator.' })
+    }
+
+    req.user = {
+      id: user._id.toString(),
+      role: user.role,
+      name: user.name,
+      email: user.email,
+    }
+    next()
+  } catch (err) {
+    console.warn('[auth] Token verification failed:', err.name || 'error')
+    return res.status(401).json({ message: 'Not authorized, token invalid' })
+  }
+}
+
+export default protect

@@ -5,3 +5,7 @@ build
 .mongo-data
 backend/.mongo-data
 
+# Uploaded receipts and delivery proofs (keep the folder, ignore the files)
+backend/uploads/*
+!backend/uploads/.gitkeep
+

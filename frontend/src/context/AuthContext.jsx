@@ -1,107 +1,123 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import api, { REFRESH_TOKEN_KEY, TOKEN_KEY } from '../api/axios';
+import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react'
+import client from '../api/client.js'
 
-export const AuthContext = createContext(null);
+const AuthContext = createContext(null)
 
-const readToken = () => localStorage.getItem(TOKEN_KEY);
+export function AuthProvider({ children }) {
+  const [token, setToken] = useState(() => localStorage.getItem('vd_token'))
+  const [user, setUser] = useState(null)
+  const [rider, setRider] = useState(null)
+  const [loading, setLoading] = useState(Boolean(token))
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [token, setToken] = useState(readToken);
-  const [loading, setLoading] = useState(Boolean(readToken()));
-
-  const persistToken = useCallback((nextToken) => {
-    if (nextToken) {
-      localStorage.setItem(TOKEN_KEY, nextToken);
-    } else {
-      localStorage.removeItem(TOKEN_KEY);
+  const persistToken = (next) => {
+    if (next) localStorage.setItem('vd_token', next)
+    else {
+      localStorage.removeItem('vd_token')
+      localStorage.removeItem('vd_refresh_token')
     }
-    setToken(nextToken);
-  }, []);
+    setToken(next)
+  }
 
-  // Restore the session on first load.
-  const loadUser = useCallback(async () => {
-    if (!readToken()) {
-      setUser(null);
-      setLoading(false);
-      return null;
+  const persistRefreshToken = (next) => {
+    if (next) localStorage.setItem('vd_refresh_token', next)
+    else localStorage.removeItem('vd_refresh_token')
+  }
+
+  const refresh = useCallback(async () => {
+    if (!localStorage.getItem('vd_token')) {
+      setLoading(false)
+      return null
     }
-
     try {
-      const { data } = await api.get('/auth/me');
-      setUser(data.data);
-      return data.data;
+      const { data } = await client.get('/auth/me')
+      setUser(data.user)
+      setRider(data.rider)
+      return data
     } catch {
-      persistToken(null);
-      setUser(null);
-      return null;
+      persistToken(null)
+      setUser(null)
+      setRider(null)
+      return null
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, [persistToken]);
+  }, [])
 
   useEffect(() => {
-    const onTokenRefreshed = (event) => setToken(event.detail.accessToken);
-    const onSessionExpired = () => {
-      setToken(null);
-      setUser(null);
-    };
-    window.addEventListener('auth:token-refreshed', onTokenRefreshed);
-    window.addEventListener('auth:session-expired', onSessionExpired);
+    refresh()
+  }, [refresh])
+
+  useEffect(() => {
+    const onRefreshed = (event) => {
+      persistToken(event.detail.accessToken)
+    }
+    const onExpired = () => {
+      persistToken(null)
+      setUser(null)
+      setRider(null)
+    }
+    window.addEventListener('auth:token-refreshed', onRefreshed)
+    window.addEventListener('auth:session-expired', onExpired)
     return () => {
-      window.removeEventListener('auth:token-refreshed', onTokenRefreshed);
-      window.removeEventListener('auth:session-expired', onSessionExpired);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (readToken()) {
-      loadUser();
+      window.removeEventListener('auth:token-refreshed', onRefreshed)
+      window.removeEventListener('auth:session-expired', onExpired)
     }
-  }, [loadUser]);
+  }, [])
 
-  const login = useCallback(
-    async ({ email, password }) => {
-      const { data } = await api.post('/auth/login', { email, password });
-      persistToken(data.accessToken);
-      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-      setUser(data.user);
-      return data.user;
-    },
-    [persistToken]
-  );
+  const login = useCallback(async (email, password) => {
+    const { data } = await client.post('/auth/login', { email, password })
+    persistToken(data.token)
+    persistRefreshToken(data.refreshToken)
+    setUser(data.user)
+    setRider(data.rider)
+    return data
+  }, [])
 
-  const register = useCallback(
-    async (payload) => {
-      const { data } = await api.post('/auth/register', payload);
-      persistToken(data.accessToken);
-      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
-      setUser(data.user);
-      return data.user;
-    },
-    [persistToken]
-  );
+  const register = useCallback(async (form, role = 'rider') => {
+    const endpoint = role === 'customer' ? '/auth/register/customer' : '/auth/register/rider'
+    const { data } = await client.post(endpoint, form)
+    persistToken(data.token)
+    persistRefreshToken(data.refreshToken)
+    setUser(data.user)
+    setRider(data.rider)
+    return data
+  }, [])
 
-  const logout = useCallback(async () => {
-    try {
-      if (readToken()) {
-        await api.post('/auth/logout');
-      }
-    } catch {
-      // Ignore network errors on logout.
-    } finally {
-      persistToken(null);
-      localStorage.removeItem(REFRESH_TOKEN_KEY);
-      setUser(null);
-    }
-  }, [persistToken]);
+  const logout = useCallback(() => {
+    const refreshToken = localStorage.getItem('vd_refresh_token')
+    if (refreshToken) client.post('/auth/logout', { refreshToken }).catch((error) => {
+      console.error('Failed to revoke refresh token:', error.message)
+    })
+    persistToken(null)
+    setUser(null)
+    setRider(null)
+  }, [])
+
+  const updateRider = useCallback((partial) => {
+    setRider((prev) => ({ ...prev, ...partial }))
+  }, [])
 
   const value = useMemo(
-    () => ({ user, token, loading, login, register, logout, refreshUser: loadUser }),
-    [user, token, loading, login, register, logout, loadUser]
-  );
+    () => ({
+      token,
+      user,
+      rider,
+      loading,
+      isApproved: rider?.approvalStatus === 'approved' && rider?.isApproved,
+      login,
+      register,
+      logout,
+      refresh,
+      updateRider,
+    }),
+    [token, user, rider, loading, login, register, logout, refresh, updateRider],
+  )
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider')
+  return ctx
+}

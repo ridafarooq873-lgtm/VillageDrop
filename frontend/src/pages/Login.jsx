@@ -1,84 +1,75 @@
-import { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { useAuth } from '../hooks/useAuth';
-import { roleHomePath } from '../utils/roleRoutes';
-import './Login.css';
+import { useState } from 'react'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext.jsx'
 
-const Login = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+export default function Login() {
+  const { login, token, user, loading } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [form, setForm] = useState({ email: '', password: '' })
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const from = location.state?.from?.pathname;
+  const home = user?.role === 'admin' ? '/admin' : user?.role === 'customer' ? '/customer' : '/'
+  if (!loading && token) return <Navigate to={home} replace />
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const submit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setBusy(true)
     try {
-      const user = await login(formData);
-      toast.success('Logged in successfully!');
-      const roleHome = roleHomePath(user.role);
-      const safeFrom = from && (
-        (user.role === 'customer' && ['/dashboard', '/orders', '/orders/new'].some((path) => from === path || from.startsWith(`${path}/`))) ||
-        (user.role === 'rider' && from.startsWith('/rider')) ||
-        (user.role === 'admin' && from.startsWith('/admin'))
-      );
-      navigate(safeFrom ? from : roleHome, { replace: true });
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      const data = await login(form.email, form.password)
+      navigate(
+        location.state?.from?.pathname ||
+          (data.user?.role === 'admin' ? '/admin' : data.user?.role === 'customer' ? '/customer' : '/'),
+        { replace: true }
+      )
+    } catch (err) {
+      setError(err.message)
     } finally {
-      setLoading(false);
+      setBusy(false)
     }
-  };
+  }
 
   return (
-    <div className="auth-container">
+    <div className="auth-page">
       <div className="auth-card">
-        <h2 className="auth-title">Welcome Back</h2>
-        <p className="auth-subtitle">Log in to track your orders</p>
+        <span className="brand-mark big">VD</span>
+        <h1>Sign in to VillageDrop</h1>
+        <p className="muted">Access your customer, rider, or admin account.</p>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Email</label>
+        {error && <div className="banner banner-rejected">{error}</div>}
+
+        <form onSubmit={submit} className="form">
+          <label>
+            Email
             <input
               type="email"
-              name="email"
-              className="form-control"
               required
-              value={formData.email}
-              onChange={handleChange}
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="you@example.com"
             />
-          </div>
-          <div className="form-group">
-            <label>Password</label>
+          </label>
+          <label>
+            Password
             <input
               type="password"
-              name="password"
-              className="form-control"
               required
-              value={formData.password}
-              onChange={handleChange}
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="••••••••"
             />
-          </div>
-
-          <button type="submit" className="btn btn-primary auth-btn" disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
+          </label>
+          <button className="btn btn-primary" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
           </button>
-
-          <p className="auth-redirect">
-            Don&apos;t have an account? <Link to="/register">Register here</Link>
-          </p>
         </form>
+
+        <p className="muted center">
+          New to VillageDrop? <Link to="/register">Create an account</Link>
+        </p>
       </div>
     </div>
-  );
-};
-
-export default Login;
+  )
+}

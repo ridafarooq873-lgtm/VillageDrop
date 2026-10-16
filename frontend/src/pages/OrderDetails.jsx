@@ -41,36 +41,20 @@ const OrderDetails = () => {
   useEffect(() => {
     if (!socket) return undefined;
 
-    const joinRoom = () => socket.emit('joinOrderRoom', id);
-    const leaveRoom = () => socket.emit('leaveOrderRoom', id);
+    const joinRoom = () => socket.emit('join:order', id);
+    const leaveRoom = () => socket.emit('leave:order', id);
 
     socket.on('connect', joinRoom);
     if (socket.connected) joinRoom();
-
-    const onStatusUpdate = (payload) => {
-      if (!payload || String(payload.orderId) !== String(id)) return;
-      if (payload.updatedOrder) {
-        setOrder((current) => ({
-          ...payload.updatedOrder,
-          deliveryPin: current?.deliveryPin,
-        }));
-      } else {
-        fetchOrder();
-      }
+    const onOrderUpdate = (payload) => {
+      if (String(payload?.orderId) === String(id)) fetchOrder();
     };
-
-    socket.on('orderStatusUpdated', onStatusUpdate);
-    socket.on('orderAccepted', onStatusUpdate);
-    socket.on('orderPicked', onStatusUpdate);
-    socket.on('orderDelivered', onStatusUpdate);
+    socket.on('order:update', onOrderUpdate);
 
     return () => {
       leaveRoom();
       socket.off('connect', joinRoom);
-      socket.off('orderStatusUpdated', onStatusUpdate);
-      socket.off('orderAccepted', onStatusUpdate);
-      socket.off('orderPicked', onStatusUpdate);
-      socket.off('orderDelivered', onStatusUpdate);
+      socket.off('order:update', onOrderUpdate);
     };
   }, [socket, id, fetchOrder]);
 
@@ -139,13 +123,26 @@ const OrderDetails = () => {
         </div>
       </div>
 
-      {order.status !== 'cancelled' && order.deliveryPin && (
-        <div className="card" style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Delivery PIN</p>
-          <h2 style={{ letterSpacing: '0.4rem', color: 'var(--primary-dark)' }}>{order.deliveryPin}</h2>
-          <small style={{ color: 'var(--text-secondary)' }}>
-            Share this PIN with your rider only when you receive the order.
-          </small>
+      {order.status !== 'cancelled' && (order.pickupPin || order.deliveryPin) && (
+        <div className="details-grid" style={{ marginBottom: '1.5rem' }}>
+          {order.pickupPin && !['picked_up', 'out_for_delivery', 'delivered'].includes(order.status) && (
+            <div className="card" style={{ textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Pickup PIN</p>
+              <h2 style={{ letterSpacing: '0.4rem', color: 'var(--primary-dark)' }}>{order.pickupPin}</h2>
+              <small style={{ color: 'var(--text-secondary)' }}>
+                Give this PIN to your rider when they collect your items.
+              </small>
+            </div>
+          )}
+          {order.deliveryPin && (
+            <div className="card" style={{ textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Delivery PIN</p>
+              <h2 style={{ letterSpacing: '0.4rem', color: 'var(--primary-dark)' }}>{order.deliveryPin}</h2>
+              <small style={{ color: 'var(--text-secondary)' }}>
+                Share this PIN with your rider only when you receive the order.
+              </small>
+            </div>
+          )}
         </div>
       )}
 

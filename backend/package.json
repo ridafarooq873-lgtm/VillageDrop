@@ -1,32 +1,23 @@
 {
-  "name": "village-drop-backend",
+  "name": "villagedrop-backend",
   "version": "1.0.0",
-  "description": "Village Drop - Village-level delivery logistics platform",
+  "private": true,
+  "description": "VillageDrop REST API - Rider module",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "node --watch server.js",
+    "seed": "node seed.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "express-validator": "^7.2.0",
-    "helmet": "^7.1.0",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.7.0",
-    "morgan": "^1.10.0",
-    "socket.io": "^4.8.0"
-  },
-  "devDependencies": {
-    "mongodb-memory-server": "^11.3.0",
-    "nodemon": "^3.1.7"
-  },
-  "keywords": [
-    "delivery",
-    "logistics",
-    "village"
-  ],
-  "license": "ISC"
+    "mongoose": "^8.5.1",
+    "multer": "^2.4.0",
+    "socket.io": "^4.7.5"
+  }
 }

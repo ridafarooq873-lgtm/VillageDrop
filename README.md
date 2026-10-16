@@ -15,8 +15,8 @@ over Socket.IO.
 - Node.js 18+ (tested on Node 24)
 - npm
 
-No external database is required for development: the backend boots an embedded,
-persistent MongoDB (`mongodb-memory-server`) into `backend/.mongo-data`.
+MongoDB must be running locally or provided through `MONGO_URI`; this branch
+does not start an embedded database.
 
 ---
 
@@ -38,17 +38,12 @@ npm install --prefix frontend
 | `PORT` | HTTP/socket port | `5000` |
 | `NODE_ENV` | `development` enables request logging | `development` |
 | `JWT_SECRET` | Signing key for access tokens | — (required) |
-| `JWT_EXPIRE` | Access token lifetime | `1d` |
-| `JWT_REFRESH_SECRET` | Signing key for refresh tokens | falls back to `JWT_SECRET` |
-| `JWT_REFRESH_EXPIRE` | Refresh token lifetime | `7d` |
-| `USE_MEMORY_DB` | `true`/`false` to force/disable the embedded DB | auto in dev |
-| `MONGO_URI` | External MongoDB URI (production) | — |
-| `MONGO_DB_PATH` | Override the embedded DB data directory | `backend/.mongo-data` |
+| `JWT_EXPIRES_IN` | Access token lifetime | `7d` |
+| `MONGO_URI` | MongoDB connection URI | `mongodb://127.0.0.1:27017/villagedrop` |
 | `ADMIN_BOOTSTRAP_KEY` | One-time key used to create the first admin account (minimum 32 characters) | — |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Reserved | — |
 
-> The JWT expiry/refresh variables have code-level fallbacks, so the server still
-> issues tokens if they are absent (this was previously a startup-breaking bug).
+Refresh tokens are generated as random opaque values, stored hashed in MongoDB,
+and rotated on use.
 
 `frontend/.env`:
 
@@ -61,12 +56,12 @@ npm install --prefix frontend
 
 ## Running
 
-Start the backend (embedded MongoDB comes up automatically):
+Start the backend (ensure MongoDB is running):
 
 ```powershell
 npm run dev:backend            # from the repository root
 # or
-npm run dev --prefix backend   # nodemon, auto-reload
+npm run dev --prefix backend   # Node watch mode
 # or
 npm start --prefix backend
 ```
@@ -106,21 +101,22 @@ Never use the public registration form to create an administrator.
 ```
 backend/
   server.js                     # express + http + socket bootstrap
-  config/db.js                  # mongoose connection, embedded mongod fallback
+  config/db.js                  # Mongoose connection to configured MongoDB
   config/socket.js              # Socket.IO init + getIO()
   middleware/auth.js            # protect: verify Bearer JWT -> req.user
   middleware/rbac.js            # authorize(...roles)
   models/                       # User, Order, OrderItem, Rider, Notification, ...
   routes/
     authRoutes.js               # register / login / refresh / logout / me
-    customerRoutes.js           # customer dashboard, orders, notifications, reviews
+    customerRoutes.js           # plural customer API
+    customerCompatRoutes.js     # full customer order portal API
     riderRoutes.js              # rider onboarding, availability, queue, status updates
     adminRoutes.js              # rider approvals, order oversight
   services/orderStatusService.js# status transitions, events, notifications
-  sockets/orderTracking.js      # socket auth, rooms, location relay
+  sockets/orderTracking.js      # legacy order-tracking handlers
 
 frontend/src/
-  api/axios.js                  # axios instance + token interceptor
+  api/client.js                 # shared axios instance + refresh-token rotation
   api/customerApi.js            # customer REST helpers
   context/AuthContext.jsx       # session, login/register/logout
   context/SocketContext.jsx     # socket connection + live notifications
@@ -132,99 +128,96 @@ frontend/src/
 
 ## Authentication & roles
 
-Roles: `customer`, `rider`, `admin` (default `customer`).
+Roles: `customer`, `rider`, `admin`, and `shop` (default `customer`).
 
-- Public registration can create a customer or submit a rider application; it
-  cannot grant the `admin` role. Rider applications include vehicle and license
-  information and remain unavailable until an admin approves them.
-- `POST /api/auth/register` → `{ accessToken, refreshToken, user }`
+- `POST /api/auth/register/customer` creates a customer. `POST
+  /api/auth/register/rider` submits a rider application. Neither endpoint can
+  grant the `admin` role. Rider accounts remain unavailable until approval.
 - `POST /api/auth/bootstrap-admin` → one-time first-admin setup; requires the
   `x-admin-bootstrap-key` header and a 12+ character password
 - `POST /api/auth/login`
-- `POST /api/auth/refresh-token` → rotates the refresh token
-- `POST /api/auth/logout` → clears the stored refresh token
-- `GET/PUT /api/auth/me`
+- `POST /api/auth/refresh-token` rotates the one-time refresh token
+- `POST /api/auth/logout` revokes the presented refresh token
+- `GET /api/auth/me`
 
 Every protected route runs `protect` (verifies the JWT and reloads the user from
-the DB, so role changes take effect immediately) followed by `authorize(role)`:
+the DB, so role changes take effect immediately) followed by a role guard:
 
 | Router | Guard |
 |---|---|
 | `/api/customer/*` | `authorize('customer')` |
-| `/api/rider/*` | `authorize('rider')` |
+| `/api/riders/*` | `authorize('rider')` |
 | `/api/admin/*` | `authorize('admin')` |
 
-The frontend routes each role to its own portal: customers use `/dashboard`,
-riders use `/rider`, and administrators use `/admin`. Riders can go online,
+The frontend routes each role to its own portal: customers use `/customer`,
+riders use `/`, and administrators use `/admin`. Customers can create standard
+or assisted-purchase requests, manage eligible cancellations, and track orders.
+Riders can go online,
 accept open orders, advance assigned deliveries, and confirm delivery with the
 customer's PIN. Admins can review/reject rider applications and monitor orders.
 Refresh tokens are rotated automatically when an API request receives an
 expired-access-token response.
 
-Admin endpoints include `GET /api/admin/overview`, `GET /api/admin/riders`,
-`PUT /api/admin/riders/:id/approval`, and `GET /api/admin/orders`. Rider
-endpoints include `PUT /api/rider/availability` and rider-scoped notification
-history/read routes.
+The customer portal uses compatibility endpoints under `/api/customer/*`;
+the Iqra platform's customer API remains available at `/api/customers/*`.
+Rider workflows are under `/api/riders/*`, and operations tools are under
+`/api/admin/*`.
 
 ---
 
 ## Order lifecycle
 
-Statuses: `pending → confirmed → assigned/purchasing → picked_up → in_transit → delivered`,
-plus `cancelled` from early states.
+The stored lifecycle uses `pending → accepted_by_shop/ready_for_pickup →
+assigned_to_rider → picked_up → out_for_delivery → delivered`, plus `cancelled`
+from early states. The customer API presents customer-facing status labels.
 
-Transitions are enforced in `orderStatusService.js` (`STATUS_TRANSITIONS`); an
-invalid transition returns `400`. Delivering an order through the rider endpoint
-requires the customer's 4-digit `deliveryPin`.
+The rider API enforces valid transitions and requires the customer's 4-digit
+delivery PIN to complete delivery. PINs are excluded from general/admin/rider
+order queries and returned only to the owning customer on their order detail.
 
 Key endpoints:
 
-- `POST /api/customer/orders` — create an order (returns the order incl. `deliveryPin`)
+- `POST /api/customer/orders` — create a customer order
 - `GET  /api/customer/orders/:id` — order detail
 - `PUT  /api/customer/orders/:id/cancel`
-- `GET  /api/rider/orders` — available + assigned orders
-- `PUT  /api/rider/orders/:id/accept` — claim a pending order (`pending → confirmed`)
-- `PUT  /api/rider/orders/:id/status` — advance status; body `{ status, note?, location?, pin? }`
-- `PUT  /api/admin/orders/:id/status` — admin override
+- `GET  /api/riders/available-requests` — available orders
+- `POST /api/riders/me/accept-request/:orderId` — claim a pending order
+- `PUT  /api/riders/me/order/:orderId/status` — advance an assigned order
 
 ---
 
 ## Real-time flow (Socket.IO)
 
-The client connects to the `/tracking` namespace with the JWT:
+The client connects to Socket.IO's default namespace with the JWT:
 
 ```js
-io(`${VITE_SOCKET_URL}/tracking`, { auth: { token } })
+io({ auth: { token } })
 ```
 
-Handlers are registered on both the default namespace and `/tracking`
-(`sockets/orderTracking.js`) so either connection style works. Emissions from the
-service target **both** namespaces, so a client receives each event once.
+Order and rider room joins are authenticated and checked against the current
+user's order assignment/ownership.
 
 **Client → server**
 
 | Event | Payload | Purpose |
 |---|---|---|
-| `joinOrderRoom` | `orderId` | subscribe to a specific order |
-| `leaveOrderRoom` | `orderId` | unsubscribe |
-| `updateLocation` | `{ orderId, lat, lng }` | rider location ping |
+| `join:order` | `orderId` | subscribe to an owned or assigned order |
+| `leave:order` | `orderId` | unsubscribe |
+| `join:rider` | `riderId` | subscribe to own rider account |
+| `join:admins` | — | subscribe to admin event feed |
 
 **Server → client**
 
 | Event | Room | Payload |
 |---|---|---|
-| `orderStatusUpdated` | `order_{id}` | `{ orderId, previousStatus, newStatus, updatedOrder, timestamp }` |
-| `orderAccepted` | `order_{id}` | emitted on `confirmed` |
-| `orderPicked` | `order_{id}` | emitted on `picked_up` |
-| `orderDelivered` | `order_{id}` | emitted on `delivered` |
-| `newNotification` | `user_{id}` | `{ id, userId, orderId, title, message, type, read, createdAt }` |
-| `notificationUpdate` | `order_{id}` | same payload as `newNotification` |
-| `riderLocationUpdate` | `order_{id}` | `{ orderId, lat, lng, timestamp }` |
+| `order:update` | authorized order room and admin feed | `{ orderId, status }` |
+| `delivery:update` | rider room and admin feed | `{ riderId, orderId, status }` |
+| `approval:update` | rider room and admin feed | approval changes |
+| `availability:update` | rider room and admin feed | availability changes |
 
-Authenticated sockets auto-join `user_{id}`; the frontend `SocketContext` joins
-`order_{id}` on the order detail page and normalizes payloads (accepting both
-`id`/`_id` and `read`/`isRead`). The navbar bell shows unread counts and marks
-notifications read via `PUT /api/customer/notifications/:id/read`.
+Authenticated sockets auto-join their private user room; the frontend joins an
+order room on the customer order detail page. The server validates user status
+and role on connection and verifies ownership before joining protected rooms.
 
 ---
 
@@ -257,15 +250,11 @@ Backend JavaScript syntax can be checked with `node --check` on files in
 
 ## Troubleshooting
 
-**Embedded MongoDB fails to start / `JSON.parse` crash**
-Only one `mongod` may hold the WiredTiger lock on a data directory. Stop any
-other running backend, or point the instance (and tests) at a distinct path via
-`MONGO_DB_PATH`. `mongodb-memory-server` can crash if a second `mongod` on the
-same path emits an error line, so exclusive access matters.
+**MongoDB connection fails**
+Ensure a MongoDB server is running and `MONGO_URI` in `backend/.env` is correct.
 
-**`"expiresIn" should be a number of seconds...`**
-`JWT_EXPIRE` / `JWT_REFRESH_EXPIRE` were missing. Set them in `backend/.env` (or
-rely on the built-in fallbacks).
+**`JWT_SECRET` is not configured**
+Set a long, random `JWT_SECRET` in `backend/.env` before starting the backend.
 
 **CORS / connection refused from the frontend**
 Ensure the backend is on port `5000` and that `VITE_API_URL` / `VITE_SOCKET_URL`

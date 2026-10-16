@@ -1,12 +1,32 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose'
 
-const complaintSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  order: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
-  subject: { type: String, required: true },
-  description: { type: String, required: true },
-  status: { type: String, enum: ['open', 'in_progress', 'resolved'], default: 'open' },
-  resolution: String
-}, { timestamps: true });
+const complaintSchema = new mongoose.Schema(
+  {
+    order: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Order',
+    },
+    raisedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    against: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    subject: { type: String, required: true, trim: true },
+    description: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ['open', 'in_progress', 'resolved', 'closed'],
+      default: 'open',
+    },
+    resolution: String,
+    resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    resolvedAt: Date,
+  },
+  { timestamps: true }
+)
 
-module.exports = mongoose.model('Complaint', complaintSchema);
+export default mongoose.model('Complaint', complaintSchema)

@@ -1,297 +1,406 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const User = require('../models/User');
-const Rider = require('../models/Rider');
-const { protect } = require('../middleware/auth');
+import express from 'express'
+import jwt from 'jsonwebtoken'
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto'
+import { asyncHandler } from '../utils/asyncHandler.js'
+import User from '../models/User.js'
+import Rider from '../models/Rider.js'
+import Setting from '../models/Setting.js'
+import { protect } from '../middleware/auth.js'
+import { requireRole } from '../middleware/rbac.js'
 
-const router = express.Router();
-let adminBootstrapInProgress = false;
+const router = express.Router()
 
-// @route   POST /api/auth/register
-// @desc    Register a user
-// @access  Public
+function generateToken(user) {
+  const secret = process.env.JWT_SECRET
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d'
+  if (!secret) throw new Error('JWT_SECRET not configured')
+  return jwt.sign({ id: user._id, role: user.role }, secret, { expiresIn })
+}
+
+function hashRefreshToken(token) {
+  return createHash('sha256').update(token).digest('hex')
+}
+
+async function issueTokens(user) {
+  const refreshToken = randomBytes(48).toString('base64url')
+  user.refreshTokens = user.refreshTokens || []
+  user.refreshTokens.push({
+    tokenHash: hashRefreshToken(refreshToken),
+    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  })
+  await user.save()
+  return { token: generateToken(user), refreshToken }
+}
+
+/**
+ * @route POST /api/auth/register/customer
+ * @desc Register a customer
+ */
 router.post(
-  '/register',
-  [
-    body('name', 'Please add a name').trim().notEmpty(),
-    body('email', 'Please include a valid email').isEmail().normalizeEmail(),
-    body('phone', 'Please add a valid phone number').isMobilePhone('any'),
-    body('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
-    body('role').optional().isIn(['customer', 'rider'])
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+  '/register/customer',
+  asyncHandler(async (req, res) => {
+    const { name, email, phone, password, address } = req.body
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' })
     }
 
-    const { name, email, phone, password, role = 'customer', address, vehicleType, vehicleNumber, licenseNumber } = req.body || {};
-    if (role === 'rider' && (
-      !['bicycle', 'motorcycle', 'auto', 'van'].includes(vehicleType) ||
-      !String(vehicleNumber || '').trim() ||
-      !String(licenseNumber || '').trim()
-    )) {
-      return res.status(400).json({
-        success: false,
-        message: 'Rider registration requires a valid vehicle type, vehicle number, and license number'
-      });
-    }
-
-    let user;
-    try {
-      // Check if user exists
-      user = await User.findOne({ $or: [{ email }, { phone }] });
-
-      if (user) {
-        return res.status(400).json({ success: false, message: 'User already exists with that email or phone' });
-      }
-
-      user = await User.create({
-        name,
-        email: email.toLowerCase(),
-        phone,
-        password,
-        role,
-        address
-      });
-
-      if (role === 'rider') {
-        await Rider.create({
-          user: user._id,
-          vehicleType,
-          vehicleNumber: vehicleNumber.trim(),
-          licenseNumber: licenseNumber.trim(),
-          isAvailable: false,
-          isApproved: false,
-          approvalStatus: 'pending'
-        });
-      }
-
-      // Generate tokens
-      const accessToken = user.generateAuthToken();
-      const refreshToken = user.generateRefreshToken();
-
-      // Save refresh token
-      user.refreshToken = refreshToken;
-      await user.save();
-
-      res.status(201).json({
-        success: true,
-        accessToken,
-        refreshToken,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          ...(role === 'rider' ? { approvalStatus: 'pending' } : {})
-        }
-      });
-    } catch (err) {
-      if (user?._id) await User.deleteOne({ _id: user._id });
-      if (user?._id) await Rider.deleteOne({ user: user._id });
-      console.error(err.message);
-      res.status(500).send('Server Error');
-    }
-  }
-);
-
-router.post('/bootstrap-admin', async (req, res) => {
-  const bootstrapKey = process.env.ADMIN_BOOTSTRAP_KEY;
-  if (!bootstrapKey || bootstrapKey.length < 32) {
-    return res.status(503).json({ success: false, message: 'Admin bootstrap is not configured' });
-  }
-
-  const expected = Buffer.from(bootstrapKey);
-  const supplied = Buffer.from(req.get('x-admin-bootstrap-key') || '');
-  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
-    return res.status(401).json({ success: false, message: 'Invalid bootstrap key' });
-  }
-  if (adminBootstrapInProgress) {
-    return res.status(409).json({ success: false, message: 'Admin bootstrap is already in progress' });
-  }
-
-  const { name, email, phone, password } = req.body || {};
-  if (typeof name !== 'string' || !name.trim() ||
-    typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
-    typeof phone !== 'string' || !/^\+?[\d\s()-]{10,20}$/.test(phone) ||
-    typeof password !== 'string' || password.length < 12) {
-    return res.status(400).json({
-      success: false,
-      message: 'Name, email, phone, and a password of at least 12 characters are required'
-    });
-  }
-
-  adminBootstrapInProgress = true;
-  try {
-    if (await User.exists({ role: 'admin' })) {
-      return res.status(409).json({ success: false, message: 'An admin account already exists' });
-    }
-
-    const existing = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone }] });
+    const existing = await User.findOne({ email: email.toLowerCase().trim() })
     if (existing) {
-      return res.status(409).json({ success: false, message: 'An account already exists with that email or phone' });
+      return res.status(409).json({ message: 'Email already in use' })
     }
 
-    await User.create({ name: name.trim(), email: email.toLowerCase(), phone, password, role: 'admin' });
-    return res.status(201).json({
-      success: true,
-      message: 'Admin account created. Sign in using the regular login page.'
-    });
-  } catch (err) {
-    console.error(err.message);
-    return res.status(500).json({ success: false, message: 'Could not create admin account' });
-  } finally {
-    adminBootstrapInProgress = false;
-  }
-});
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone?.trim(),
+      password,
+      role: 'customer',
+      address,
+    })
 
-// @route   POST /api/auth/login
-// @desc    Authenticate user & get token
-// @access  Public
+    const tokens = await issueTokens(user)
+
+    res.status(201).json({
+      message: 'Customer registered successfully',
+      ...tokens,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        address: user.address,
+      },
+    })
+  })
+)
+
+/**
+ * @route POST /api/auth/register/rider
+ * @desc Register a rider (creates User + Rider, approvalStatus pending)
+ */
+router.post(
+  '/register/rider',
+  asyncHandler(async (req, res) => {
+    const {
+      name,
+      email,
+      phone,
+      password,
+      vehicleType,
+      licenseNumber,
+      nicNumber,
+      vehicleNumber,
+      bankDetails,
+      address,
+    } = req.body
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' })
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() })
+    if (existing) {
+      return res.status(409).json({ message: 'Email already in use' })
+    }
+
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone?.trim(),
+      password,
+      role: 'rider',
+      address,
+    })
+
+    const rider = await Rider.create({
+      user: user._id,
+      vehicleType: vehicleType || 'bike',
+      licenseNumber: licenseNumber?.trim(),
+      nicNumber: nicNumber?.trim(),
+      vehicleNumber: vehicleNumber?.trim(),
+      bankDetails,
+      approvalStatus: 'pending',
+      isApproved: false,
+      isOnline: false,
+      availabilityStatus: 'offline',
+    })
+
+    const tokens = await issueTokens(user)
+
+    res.status(201).json({
+      message: 'Rider registered successfully. Awaiting admin approval.',
+      ...tokens,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        address: user.address,
+      },
+      rider: {
+        _id: rider._id,
+        user: rider.user,
+        riderId: rider.riderId,
+        approvalStatus: rider.approvalStatus,
+        isApproved: rider.isApproved,
+        vehicleType: rider.vehicleType,
+      },
+    })
+  })
+)
+
+/**
+ * @route POST /api/auth/login
+ * @desc Login with email/password
+ */
 router.post(
   '/login',
-  [
-    body('email', 'Please include a valid email').isEmail(),
-    body('password', 'Password is required').exists()
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+  asyncHandler(async (req, res) => {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' })
     }
 
-    const { email, password } = req.body;
-
-    try {
-      // Check for user
-      const user = await User.findOne({ email }).select('+password');
-      if (!user) {
-        return res.status(400).json({ success: false, message: 'Invalid credentials' });
-      }
-
-      // Check if password matches
-      const isMatch = await user.comparePassword(password);
-      if (!isMatch) {
-        return res.status(400).json({ success: false, message: 'Invalid credentials' });
-      }
-
-      // Check if active
-      if (!user.isActive) {
-        return res.status(401).json({ success: false, message: 'Your account has been deactivated' });
-      }
-
-      // Generate tokens
-      const accessToken = user.generateAuthToken();
-      const refreshToken = user.generateRefreshToken();
-
-      // Save refresh token
-      user.refreshToken = refreshToken;
-      await user.save();
-
-      res.status(200).json({
-        success: true,
-        accessToken,
-        refreshToken,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role
-        }
-      });
-    } catch (err) {
-      console.error(err.message);
-      res.status(500).send('Server Error');
-    }
-  }
-);
-
-// @route   POST /api/auth/refresh-token
-// @desc    Refresh access token
-// @access  Public
-router.post('/refresh-token', async (req, res) => {
-  const { refreshToken } = req.body;
-
-  if (!refreshToken) {
-    return res.status(401).json({ success: false, message: 'Refresh token is required' });
-  }
-
-  try {
-    const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
-    const decoded = jwt.verify(refreshToken, refreshSecret);
-    
-    const user = await User.findById(decoded.id).select('+refreshToken');
-    if (!user || user.refreshToken !== refreshToken) {
-      return res.status(401).json({ success: false, message: 'Invalid refresh token' });
+    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password +refreshTokens')
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' })
     }
 
-    const accessToken = user.generateAuthToken();
-    const newRefreshToken = user.generateRefreshToken();
+    if (!user.isActive) {
+      return res.status(403).json({ message: 'Account is deactivated' })
+    }
 
-    user.refreshToken = newRefreshToken;
-    await user.save();
+    const isMatch = await user.matchPassword(password)
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' })
+    }
+
+    const tokens = await issueTokens(user)
+
+    // Include rider profile if user is rider
+    let riderProfile = null
+    if (user.role === 'rider') {
+      riderProfile = await Rider.findOne({ user: user._id })
+    }
 
     res.status(200).json({
-      success: true,
-      accessToken,
-      refreshToken: newRefreshToken
-    });
-  } catch (err) {
-    console.error(err.message);
-    res.status(401).json({ success: false, message: 'Invalid or expired refresh token' });
-  }
-});
+      message: 'Login successful',
+      ...tokens,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        address: user.address,
+      },
+      rider: riderProfile,
+    })
+  })
+)
 
-// @route   POST /api/auth/logout
-// @desc    Logout user / clear refresh token
-// @access  Private
-router.post('/logout', protect, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    user.refreshToken = null;
-    await user.save();
-    
-    res.status(200).json({ success: true, message: 'Logged out successfully' });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
+router.post(
+  '/refresh-token',
+  asyncHandler(async (req, res) => {
+    const refreshToken = req.body.refreshToken
+    if (typeof refreshToken !== 'string' || !refreshToken) {
+      return res.status(400).json({ message: 'Refresh token is required' })
+    }
+    const tokenHash = hashRefreshToken(refreshToken)
+    const user = await User.findOne({
+      'refreshTokens.tokenHash': tokenHash,
+      isActive: true,
+    }).select('+refreshTokens')
+    if (!user) return res.status(401).json({ message: 'Refresh token is invalid or expired' })
 
-// @route   GET /api/auth/me
-// @desc    Get current logged in user
-// @access  Private
-router.get('/me', protect, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    res.status(200).json({ success: true, data: user });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
+    const storedToken = user.refreshTokens.find((item) => item.tokenHash === tokenHash)
+    if (!storedToken || storedToken.expiresAt <= new Date()) {
+      return res.status(401).json({ message: 'Refresh token is invalid or expired' })
+    }
+    const removed = await User.updateOne(
+      { _id: user._id, 'refreshTokens.tokenHash': tokenHash },
+      { $pull: { refreshTokens: { tokenHash } } }
+    )
+    if (removed.modifiedCount !== 1) {
+      return res.status(401).json({ message: 'Refresh token has already been used' })
+    }
 
-// @route   PUT /api/auth/me
-// @desc    Update user profile
-// @access  Private
-router.put('/me', protect, async (req, res) => {
-  try {
-    const { name, phone, address } = req.body;
-    
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user.id,
-      { name, phone, address },
-      { new: true, runValidators: true }
-    );
-    
-    res.status(200).json({ success: true, data: updatedUser });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
+    const nextRefreshToken = randomBytes(48).toString('base64url')
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $push: {
+          refreshTokens: {
+            tokenHash: hashRefreshToken(nextRefreshToken),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        },
+      }
+    )
+    res.json({ accessToken: generateToken(user), refreshToken: nextRefreshToken })
+  })
+)
 
-module.exports = router;
+router.post(
+  '/logout',
+  asyncHandler(async (req, res) => {
+    const refreshToken = req.body.refreshToken
+    if (typeof refreshToken === 'string' && refreshToken) {
+      const tokenHash = hashRefreshToken(refreshToken)
+      await User.updateOne(
+        { 'refreshTokens.tokenHash': tokenHash },
+        { $pull: { refreshTokens: { tokenHash } } }
+      )
+    }
+    res.json({ message: 'Logged out' })
+  })
+)
+
+router.post(
+  '/bootstrap-admin',
+  asyncHandler(async (req, res) => {
+    const configuredKey = process.env.ADMIN_BOOTSTRAP_KEY
+    if (!configuredKey || configuredKey.length < 32) {
+      return res.status(503).json({ message: 'Admin bootstrap is not configured' })
+    }
+    const supplied = Buffer.from(req.get('x-admin-bootstrap-key') || '')
+    const expected = Buffer.from(configuredKey)
+    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
+      return res.status(403).json({ message: 'Invalid bootstrap key' })
+    }
+    const { name, email, phone, password } = req.body
+    if (!name?.trim() || !email?.trim() || typeof password !== 'string' || password.length < 12) {
+      return res.status(400).json({
+        message: 'Name, email and a password of at least 12 characters are required',
+      })
+    }
+    if (await User.exists({ role: 'admin' })) {
+      return res.status(409).json({ message: 'An administrator already exists' })
+    }
+    if (await User.exists({ email: email.toLowerCase().trim() })) {
+      return res.status(409).json({ message: 'Email already in use' })
+    }
+
+    const lockOwner = randomUUID()
+    const lockValue = {
+      owner: lockOwner,
+      state: 'initializing',
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    }
+    let lock
+    try {
+      lock = await Setting.create({ key: 'adminBootstrap', value: lockValue })
+    } catch (error) {
+      if (error.code === 11000) {
+        lock = await Setting.findOneAndUpdate(
+          { key: 'adminBootstrap', 'value.expiresAt': { $lte: new Date() } },
+          { $set: { value: lockValue } },
+          { new: true }
+        )
+        if (!lock) {
+          return res.status(409).json({ message: 'Admin bootstrap has already been used or is in progress' })
+        }
+      } else {
+        throw error
+      }
+    }
+    try {
+      if (await User.exists({ role: 'admin' })) {
+        await Setting.deleteOne({ _id: lock._id })
+        return res.status(409).json({ message: 'An administrator already exists' })
+      }
+      const user = await User.create({
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        phone: phone?.trim(),
+        password,
+        role: 'admin',
+      })
+      await Setting.updateOne(
+        { _id: lock._id, 'value.owner': lockOwner },
+        { $set: { value: { owner: lockOwner, state: 'completed' } } }
+      )
+      const tokens = await issueTokens(user)
+      res.status(201).json({
+        message: 'Initial administrator created',
+        ...tokens,
+        user: { _id: user._id, name: user.name, email: user.email, role: user.role },
+      })
+    } catch (error) {
+      await Setting.deleteOne({
+        _id: lock._id,
+        'value.owner': lockOwner,
+        'value.state': 'initializing',
+      })
+      throw error
+    }
+  })
+)
+
+/**
+ * @route GET /api/auth/me
+ * @desc Get current authenticated user + rider profile
+ */
+router.get(
+  '/me',
+  protect,
+  asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user.id).lean()
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' })
+    }
+
+    let rider = null
+    if (user.role === 'rider') {
+      rider = await Rider.findOne({ user: user._id }).lean()
+    }
+
+    res.json({ user, rider })
+  })
+)
+
+/**
+ * @route POST /api/auth/register/admin
+ * @desc Register admin (protected - typically only existing admins)
+ */
+router.post(
+  '/register/admin',
+  protect,
+  requireRole('admin'),
+  asyncHandler(async (req, res) => {
+    const { name, email, phone, password } = req.body
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' })
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() })
+    if (existing) {
+      return res.status(409).json({ message: 'Email already in use' })
+    }
+
+    const user = await User.create({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone?.trim(),
+      password,
+      role: 'admin',
+    })
+
+    res.status(201).json({
+      message: 'Admin created successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    })
+  })
+)
+
+export default router

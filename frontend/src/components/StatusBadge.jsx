@@ -1,23 +1,18 @@
-import './StatusBadge.css';
-
-const STATUS_LABELS = {
+const LABELS = {
   pending: 'Pending',
   confirmed: 'Confirmed',
   assigned: 'Assigned',
-  purchasing: 'Purchasing',
-  picked_up: 'Picked Up',
-  in_transit: 'In Transit',
+  in_transit: 'In transit',
+  accepted_by_shop: 'Shop accepted',
+  ready_for_pickup: 'Ready for pickup',
+  assigned_to_rider: 'Assigned',
+  picked_up: 'Picked up',
+  out_for_delivery: 'Out for delivery',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
-};
+  rejected: 'Rejected',
+}
 
-const StatusBadge = ({ status }) => {
-  const key = (status || 'pending').toLowerCase();
-  return (
-    <span className={`status-badge status-${key}`}>
-      {STATUS_LABELS[key] || status}
-    </span>
-  );
-};
-
-export default StatusBadge;
+export default function StatusBadge({ status }) {
+  return <span className={`badge badge-${status}`}>{LABELS[status] || status}</span>
+}

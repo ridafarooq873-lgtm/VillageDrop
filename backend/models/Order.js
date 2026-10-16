@@ -1,127 +1,171 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose'
 
 const orderSchema = new mongoose.Schema(
   {
     orderNumber: {
       type: String,
-      unique: true
-    },
-    orderType: {
-      type: String,
-      enum: ['pickup_delivery', 'rider_assisted_purchase'],
-      default: 'pickup_delivery'
+      unique: true,
+      sparse: true,
     },
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true
+      required: true,
     },
-    items: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'OrderItem'
-      }
-    ],
-    pickup: {
-      address: { type: String, required: true },
-      landmark: String,
-      contactName: String,
-      contactPhone: String,
-      coordinates: {
-        lat: Number,
-        lng: Number
-      },
-      instructions: String
-    },
-    delivery: {
-      address: { type: String, required: true },
-      landmark: String,
-      contactName: { type: String, required: true },
-      contactPhone: { type: String, required: true },
-      coordinates: {
-        lat: Number,
-        lng: Number
-      },
-      instructions: String
+    shop: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Shop',
     },
     rider: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Rider'
+      ref: 'Rider',
+      default: null,
     },
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'assigned', 'purchasing', 'picked_up', 'in_transit', 'delivered', 'cancelled'],
-      default: 'pending'
-    },
-    purchaseDetails: {
-      instructions: String,
-      estimatedItemCost: Number,
-      actualItemCost: Number,
-      billImage: String
-    },
-    deliveryFee: {
-      type: Number,
-      required: true
-    },
-    totalAmount: {
-      type: Number,
-      required: true
-    },
-    paymentMethod: {
-      type: String,
-      enum: ['cod', 'online', 'wallet'],
-      default: 'cod'
+      enum: [
+        'pending',
+        'accepted_by_shop',
+        'ready_for_pickup',
+        'assigned_to_rider',
+        'picked_up',
+        'out_for_delivery',
+        'delivered',
+        'cancelled',
+        'rejected',
+      ],
+      default: 'pending',
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'refunded'],
-      default: 'pending'
+      enum: ['pending', 'paid', 'failed', 'refunded'],
+      default: 'pending',
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['cod', 'card', 'wallet'],
+      default: 'cod',
+    },
+    subtotal: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    deliveryFee: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    total: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    pickupPin: { type: String, select: false },
+    deliveryPin: { type: String, select: false },
+    notes: String,
+    deliveryAddress: {
+      name: String,
+      phone: String,
+      street: String,
+      landmark: String,
+      instructions: String,
+      city: String,
+      district: String,
+      province: String,
+      lat: Number,
+      lng: Number,
+    },
+    shopAddress: {
+      street: String,
+      contactName: String,
+      phone: String,
+      landmark: String,
+      instructions: String,
+      city: String,
+      district: String,
+      province: String,
+      lat: Number,
+      lng: Number,
     },
     estimatedDeliveryTime: Date,
-    actualDeliveryTime: Date,
-    cancellation: {
-      reason: String,
-      cancelledBy: {
-        type: String,
-        enum: ['customer', 'rider', 'admin']
-      },
-      cancelledAt: Date,
-      refundStatus: {
-        type: String,
-        enum: ['pending', 'processed', 'na'],
-        default: 'na'
-      }
+    deliveredAt: Date,
+    pickedUpAt: Date,
+    acceptedAt: Date,
+    outForDeliveryAt: Date,
+
+    // ---- Rider-assisted purchase workflow ----
+    orderType: {
+      type: String,
+      enum: ['standard', 'assisted_purchase'],
+      default: 'standard',
     },
-    deliveryPin: { type: String, select: false },
-    trackingUpdates: [
+    requiresPurchase: { type: Boolean, default: false },
+    purchaseStatus: {
+      type: String,
+      enum: ['not_required', 'pending', 'items_confirmed', 'completed'],
+      default: 'not_required',
+    },
+    purchaseAmount: { type: Number, default: 0 }, // actual amount spent by rider
+    receiptUrl: { type: String },
+    receiptUploadedAt: Date,
+    itemsConfirmedAt: Date,
+    purchaseCompletedAt: Date,
+    purchaseNotes: { type: String, default: '' },
+    purchasedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Rider' },
+
+    // ---- Rider earnings (locked at delivery time so later fee-config
+    //      changes never rewrite history for settled orders) ----
+    riderEarning: {
+      gross: { type: Number, default: 0 },
+      commission: { type: Number, default: 0 },
+      net: { type: Number, default: 0 },
+      rate: { type: Number, default: 0 },
+      computedAt: Date,
+    },
+
+    // ---- Delivery confirmation ----
+    deliveryConfirmed: { type: Boolean, default: false },
+    deliveryConfirmedAt: Date,
+    deliveryRecipientName: { type: String, default: '' },
+    deliveryProofUrl: { type: String },
+    deliveryNotes: { type: String, default: '' },
+
+    // Riders who rejected/declined this request (so they are not shown it again)
+    rejections: [
       {
-        status: String,
-        timestamp: { type: Date, default: Date.now },
-        location: String,
-        note: String
-      }
-    ]
+        rider: { type: mongoose.Schema.Types.ObjectId, ref: 'Rider' },
+        reason: { type: String, default: '' },
+        at: { type: Date, default: Date.now },
+      },
+    ],
+    // Audit trail of status changes
+    statusHistory: [
+      {
+        status: { type: String },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        note: { type: String, default: '' },
+        at: { type: Date, default: Date.now },
+      },
+    ],
   },
-  {
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true }
-  }
-);
+  { timestamps: true }
+)
 
-// Virtual for item count
-orderSchema.virtual('itemCount').get(function () {
-  return this.items ? this.items.length : 0;
-});
+// Index to quickly find orders rejecting riders excluded
+orderSchema.index({ status: 1, rider: 1 })
+orderSchema.index({ 'rejections.rider': 1 })
 
-// Pre-save hook to generate order number
-orderSchema.pre('save', function (next) {
+orderSchema.pre('save', async function (next) {
   if (!this.orderNumber) {
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    this.orderNumber = `VD-${timestamp}-${random}`;
+    this.orderNumber = `OD-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 1000)
+      .toString()
+      .padStart(3, '0')}`
   }
-  next();
-});
+  if (!this.total && (this.subtotal || this.deliveryFee)) {
+    this.total = (this.subtotal || 0) + (this.deliveryFee || 0)
+  }
+  next()
+})
 
-module.exports = mongoose.model('Order', orderSchema);
+export default mongoose.model('Order', orderSchema)

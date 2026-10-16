@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose'
 
 const riderSchema = new mongoose.Schema(
   {
@@ -6,51 +6,103 @@ const riderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      unique: true
+      unique: true,
+    },
+    riderId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
     vehicleType: {
       type: String,
-      enum: ['bicycle', 'motorcycle', 'auto', 'van']
+      enum: ['bike', 'scooter', 'car', 'van'],
+      default: 'bike',
     },
-    vehicleNumber: String,
-    licenseNumber: String,
-    isAvailable: {
-      type: Boolean,
-      default: false
+    vehicleNumber: {
+      type: String,
+      trim: true,
     },
-    currentLocation: {
-      type: {
-        type: String,
-        enum: ['Point'],
-        default: 'Point'
-      },
-      coordinates: {
-        type: [Number], // [longitude, latitude]
-        index: '2dsphere'
-      }
+    licenseNumber: {
+      type: String,
+      trim: true,
     },
-    rating: {
-      type: Number,
-      default: 0
-    },
-    totalDeliveries: {
-      type: Number,
-      default: 0
+    nicNumber: {
+      type: String,
+      trim: true,
     },
     isApproved: {
       type: Boolean,
-      default: false
+      default: false,
     },
     approvalStatus: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
-      default: 'pending'
+      enum: ['pending', 'approved', 'rejected', 'suspended'],
+      default: 'pending',
     },
-    rejectionReason: String
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    approvedAt: Date,
+    rejectionReason: String,
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    location: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      lastUpdated: { type: Date, default: null },
+    },
+    availabilityStatus: {
+      type: String,
+      enum: ['available', 'busy', 'offline'],
+      default: 'offline',
+    },
+    rating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    totalDeliveries: {
+      type: Number,
+      default: 0,
+    },
+    completedDeliveries: {
+      type: Number,
+      default: 0,
+    },
+    bankDetails: {
+      bankName: String,
+      accountNumber: String,
+      ifsc: String,
+    },
+    documents: [
+      {
+        type: String,
+        url: String,
+        verified: { type: Boolean, default: false },
+      },
+    ],
   },
   {
-    timestamps: true
+    timestamps: true,
   }
-);
+)
 
-module.exports = mongoose.model('Rider', riderSchema);
+riderSchema.pre('save', async function (next) {
+  // Auto-generate riderId if not set
+  if (!this.riderId && this.user) {
+    try {
+      const short = this.user.toString().slice(-6).toUpperCase()
+      this.riderId = `R-${short}-${Date.now().toString().slice(-4)}`
+    } catch (e) {
+      this.riderId = `R-${Date.now().toString().slice(-6)}`
+    }
+  }
+  next()
+})
+
+const Rider = mongoose.model('Rider', riderSchema)
+export default Rider

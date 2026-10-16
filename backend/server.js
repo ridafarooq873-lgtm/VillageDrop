@@ -1,76 +1,86 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
+import 'dotenv/config'
+import express from 'express'
+import http from 'http'
+import cors from 'cors'
+import mongoose from 'mongoose'
+import { connectDB } from './config/db.js'
+import { loadFeeConfig } from './utils/feeConfig.js'
+import { initSocket } from './config/socket.js'
+import { UPLOAD_DIR } from './middleware/upload.js'
+import authRoutes from './routes/authRoutes.js'
+import riderRoutes from './routes/riderRoutes.js'
+import adminRoutes from './routes/adminRoutes.js'
+import customerRoutes from './routes/customerRoutes.js'
+import customerCompatRoutes from './routes/customerCompatRoutes.js'
+import notificationRoutes from './routes/notificationRoutes.js'
 
-// Configs
-const connectDB = require('./config/db');
-const socket = require('./config/socket');
+const app = express()
+const httpServer = http.createServer(app)
 
-// Route files
-const authRoutes = require('./routes/authRoutes');
-const customerRoutes = require('./routes/customerRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const riderRoutes = require('./routes/riderRoutes');
+// CORS
+const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
+app.use(cors({ origin: clientUrl, credentials: true }))
 
-// Socket namespaces
-const orderTrackingSocket = require('./sockets/orderTracking');
+// Body parsing
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
-// Initialize Express App
-const app = express();
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  })
+})
 
-// Create HTTP server
-const server = http.createServer(app);
+// Static: uploaded receipts and delivery proofs
+app.use('/uploads', express.static(UPLOAD_DIR))
 
-// Connect to Database
-connectDB();
+// Routes
+app.use('/api/auth', authRoutes)
+app.use('/api/riders', riderRoutes)
+app.use('/api/admin', adminRoutes)
+app.use('/api/customers', customerRoutes)
+app.use('/api/customer', customerCompatRoutes)
+app.use('/api/notifications', notificationRoutes)
 
-// Middlewares
-app.use(express.json()); // Body parser
-app.use(cors({
-  origin: 'http://localhost:5173', // Frontend dev URL
-  credentials: true
-}));
-app.use(helmet()); // Security headers
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev')); // Logging
-}
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: 'Route not found' })
+})
 
-// Mount Routers
-app.use('/api/auth', authRoutes);
-app.use('/api/customer', customerRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/rider', riderRoutes);
-
-// Base route
-app.get('/', (req, res) => {
-  res.send('Village Drop Backend is running');
-});
-
-// Global Error Handler
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: err.message || 'Server Error'
-  });
-});
+  console.error('[error]', err)
 
-// Initialize Socket.io
-const io = socket.init(server);
+  // Multer / upload errors -> 400
+  if (err.name === 'MulterError' || err.code === 'LIMIT_FILE_SIZE') {
+    const message =
+      err.code === 'LIMIT_FILE_SIZE' ? 'File too large (maximum 5MB)' : err.message
+    return res.status(400).json({ message })
+  }
+  // Custom fileFilter rejection
+  if (err.message && err.message.startsWith('Only images')) {
+    return res.status(400).json({ message: err.message })
+  }
 
-// Initialize Socket Handlers
-orderTrackingSocket(io);
+  const status = err.statusCode || 500
+  res.status(status).json({
+    message: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  })
+})
 
-// Start Server
-const PORT = process.env.PORT || 5000;
+// Initialize socket
+initSocket(httpServer, { origin: clientUrl })
 
-if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
-  });
-}
+const PORT = process.env.PORT || 5000
 
-module.exports = { app, server, io };
+connectDB(process.env.MONGO_URI).then(async () => {
+  await loadFeeConfig()
+  httpServer.listen(PORT, () => {
+    console.log(`[server] listening on http://localhost:${PORT}`)
+  })
+})

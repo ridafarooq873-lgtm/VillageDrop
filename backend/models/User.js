@@ -1,97 +1,70 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+import mongoose from 'mongoose'
+import bcrypt from 'bcryptjs'
 
 const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Please add a name']
+      required: [true, 'Name is required'],
+      trim: true,
     },
     email: {
       type: String,
-      required: [true, 'Please add an email'],
+      required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
-      match: [
-        /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/,
-        'Please add a valid email'
-      ]
+      trim: true,
     },
     phone: {
       type: String,
-      required: [true, 'Please add a phone number'],
-      unique: true
+      trim: true,
     },
     password: {
       type: String,
-      required: [true, 'Please add a password'],
+      required: [true, 'Password is required'],
       minlength: 6,
-      select: false // Don't return password by default
+      select: false,
     },
     role: {
       type: String,
-      enum: ['customer', 'rider', 'admin'],
-      default: 'customer'
-    },
-    address: {
-      street: String,
-      city: String,
-      village: String,
-      state: String,
-      pincode: String
-    },
-    profilePicture: {
-      type: String
-    },
-    isVerified: {
-      type: Boolean,
-      default: false
+      enum: ['customer', 'rider', 'admin', 'shop'],
+      required: true,
+      default: 'customer',
     },
     isActive: {
       type: Boolean,
-      default: true
+      default: true,
     },
-    refreshToken: {
-      type: String,
-      select: false
-    }
+    refreshTokens: {
+      type: [{ tokenHash: String, expiresAt: Date }],
+      default: undefined,
+      select: false,
+    },
+    avatar: String,
+    address: {
+      street: String,
+      city: String,
+      district: String,
+      province: String,
+      lat: Number,
+      lng: Number,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
-);
+)
 
-// Hash password before saving
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
-    return next();
-  }
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
-});
+  if (!this.isModified('password')) return next()
+  const salt = await bcrypt.genSalt(10)
+  this.password = await bcrypt.hash(this.password, salt)
+  next()
+})
 
-// Compare password
-userSchema.methods.comparePassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
-};
+userSchema.methods.matchPassword = async function (password) {
+  return await bcrypt.compare(password, this.password)
+}
 
-// Generate Access Token
-userSchema.methods.generateAuthToken = function () {
-  return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '1d'
-  });
-};
-
-// Generate Refresh Token
-userSchema.methods.generateRefreshToken = function () {
-  return jwt.sign(
-    { id: this._id, jti: crypto.randomUUID() },
-    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d' }
-  );
-};
-
-module.exports = mongoose.model('User', userSchema);
+const User = mongoose.model('User', userSchema)
+export default User

@@ -1,9 +1,13 @@
 /**
- * Generate a 4-digit PIN for delivery verification
- * @returns {String} 4-digit PIN
+ * Generate a numeric pickup/delivery PIN of given length.
+ * @param {number} length
  */
-const generatePin = () => {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-};
+export function generatePin(length = 4) {
+  let pin = ''
+  for (let i = 0; i < length; i++) {
+    pin += Math.floor(Math.random() * 10).toString()
+  }
+  return pin
+}
 
-module.exports = generatePin;
+export default generatePin

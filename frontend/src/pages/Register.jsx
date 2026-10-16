@@ -1,184 +1,115 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { useAuth } from '../hooks/useAuth';
-import './Register.css';
+import { useState } from 'react'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext.jsx'
 
-const Register = () => {
-  const [formData, setFormData] = useState({
-    name: '', email: '', phone: '', password: '', confirmPassword: '',
-    street: '', city: '', village: '', state: '', pincode: '',
-    role: 'customer', vehicleType: 'motorcycle', vehicleNumber: '', licenseNumber: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
-  const navigate = useNavigate();
+const EMPTY = {
+  name: '',
+  email: '',
+  phone: '',
+  password: '',
+  role: 'customer',
+  vehicleType: 'bike',
+  licenseNumber: '',
+  vehicleNumber: '',
+  nicNumber: '',
+}
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+export default function Register() {
+  const { register, token, loading } = useAuth()
+  const navigate = useNavigate()
+  const [form, setForm] = useState(EMPTY)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      return toast.error('Passwords do not match');
-    }
+  if (!loading && token) return <Navigate to="/" replace />
 
-    setLoading(true);
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value })
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setBusy(true)
     try {
-      const address = {
-        street: formData.street,
-        city: formData.city,
-        village: formData.village,
-        state: formData.state,
-        pincode: formData.pincode
-      };
-      
-      const payload = {
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        password: formData.password,
-        address
-      };
-
-      const user = await register({
-        ...payload,
-        role: formData.role,
-        ...(formData.role === 'rider' ? {
-          vehicleType: formData.vehicleType,
-          vehicleNumber: formData.vehicleNumber,
-          licenseNumber: formData.licenseNumber
-        } : {})
-      });
-      if (user.role === 'rider') {
-        toast.success('Application submitted. You can sign in while it awaits admin approval.');
-        navigate('/rider');
-      } else {
-        toast.success('Registration successful!');
-        navigate('/dashboard');
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Registration failed');
+      await register(form, form.role)
+      navigate(form.role === 'customer' ? '/customer' : '/', { replace: true })
+    } catch (err) {
+      setError(err.message)
     } finally {
-      setLoading(false);
+      setBusy(false)
     }
-  };
+  }
 
   return (
-    <div className="auth-container">
-      <div className="auth-card register-card">
-        <h2 className="auth-title">Join Village Drop</h2>
-        <p className="auth-subtitle">Create a customer account or apply to deliver as a rider</p>
-        
-        <form onSubmit={handleSubmit} className="register-form">
-          <div className="form-section">
-            <h3>Account Type</h3>
-            <div className="form-group">
-              <label htmlFor="account-role">I want to</label>
-              <select
-                id="account-role"
-                name="role"
-                className="form-control"
-                value={formData.role}
-                onChange={handleChange}
-              >
-                <option value="customer">Send and track deliveries</option>
-                <option value="rider">Apply to deliver as a rider</option>
-              </select>
-            </div>
-          </div>
+    <div className="auth-page">
+      <div className="auth-card wide">
+        <span className="brand-mark big">VD</span>
+        <h1>{form.role === 'rider' ? 'Become a rider' : 'Create your customer account'}</h1>
+        <p className="muted">
+          {form.role === 'rider'
+            ? 'Register and wait for admin approval to start delivering.'
+            : 'Create delivery requests and track them from pickup to delivery.'}
+        </p>
 
-          <div className="form-section">
-            <h3>Personal Info</h3>
-            <div className="form-group">
-              <label>Full Name</label>
-              <input type="text" name="name" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Email</label>
-              <input type="email" name="email" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Phone</label>
-              <input type="text" name="phone" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <input type="password" name="password" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Confirm Password</label>
-              <input type="password" name="confirmPassword" className="form-control" required onChange={handleChange} />
-            </div>
-          </div>
+        {error && <div className="banner banner-rejected">{error}</div>}
 
-          {formData.role === 'rider' && (
-            <div className="form-section">
-              <h3>Rider Application</h3>
-              <p>Your account will be reviewed by an administrator before you can accept orders.</p>
-              <div className="form-group">
-                <label htmlFor="vehicleType">Vehicle type</label>
-                <select
-                  id="vehicleType"
-                  name="vehicleType"
-                  className="form-control"
-                  value={formData.vehicleType}
-                  onChange={handleChange}
-                >
-                  <option value="bicycle">Bicycle</option>
-                  <option value="motorcycle">Motorcycle</option>
-                  <option value="auto">Auto</option>
+        <form onSubmit={submit} className="form grid-2">
+          <label>
+            Full name
+            <input required value={form.name} onChange={set('name')} placeholder="Ali Khan" />
+          </label>
+          <label>
+            Account type
+            <select value={form.role} onChange={set('role')}>
+              <option value="customer">Customer</option>
+              <option value="rider">Rider</option>
+            </select>
+          </label>
+          <label>
+            Phone
+            <input value={form.phone} onChange={set('phone')} placeholder="03xx xxxxxxx" />
+          </label>
+          <label>
+            Email
+            <input type="email" required value={form.email} onChange={set('email')} placeholder="rider@example.com" />
+          </label>
+          <label>
+            Password
+            <input type="password" required minLength={6} value={form.password} onChange={set('password')} placeholder="At least 6 characters" />
+          </label>
+          {form.role === 'rider' && (
+            <>
+              <label>
+                Vehicle
+                <select value={form.vehicleType} onChange={set('vehicleType')}>
+                  <option value="bike">Bike</option>
+                  <option value="scooter">Scooter</option>
+                  <option value="car">Car</option>
                   <option value="van">Van</option>
                 </select>
-              </div>
-              <div className="form-group">
-                <label htmlFor="vehicleNumber">Vehicle number</label>
-                <input id="vehicleNumber" name="vehicleNumber" className="form-control" required value={formData.vehicleNumber} onChange={handleChange} />
-              </div>
-              <div className="form-group">
-                <label htmlFor="licenseNumber">License number</label>
-                <input id="licenseNumber" name="licenseNumber" className="form-control" required value={formData.licenseNumber} onChange={handleChange} />
-              </div>
-            </div>
+              </label>
+              <label>
+                Vehicle number
+                <input value={form.vehicleNumber} onChange={set('vehicleNumber')} placeholder="ABC-123" />
+              </label>
+              <label>
+                License number
+                <input value={form.licenseNumber} onChange={set('licenseNumber')} placeholder="LIC-000000" />
+              </label>
+              <label>
+                CNIC / NIC number
+                <input value={form.nicNumber} onChange={set('nicNumber')} placeholder="35202-0000000-0" />
+              </label>
+            </>
           )}
-
-          <div className="form-section">
-            <h3>Address Details</h3>
-            <div className="form-group">
-              <label>Street/House No</label>
-              <input type="text" name="street" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Village/Locality</label>
-              <input type="text" name="village" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>City/Town</label>
-              <input type="text" name="city" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>State</label>
-              <input type="text" name="state" className="form-control" required onChange={handleChange} />
-            </div>
-            <div className="form-group">
-              <label>Pincode</label>
-              <input type="text" name="pincode" className="form-control" required onChange={handleChange} />
-            </div>
-          </div>
-          
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary auth-btn" disabled={loading}>
-              {loading ? 'Registering...' : 'Register Account'}
-            </button>
-            <p className="auth-redirect">
-              Already have an account? <Link to="/login">Login here</Link>
-            </p>
-          </div>
+          <button className="btn btn-primary span-2" disabled={busy}>
+            {busy ? 'Creating account…' : 'Register'}
+          </button>
         </form>
+
+        <p className="muted center">
+          Already registered? <Link to="/login">Sign in</Link>
+        </p>
       </div>
     </div>
-  );
-};
-
-export default Register;
+  )
+}

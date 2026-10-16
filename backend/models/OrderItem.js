@@ -1,48 +1,51 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose'
 
 const orderItemSchema = new mongoose.Schema(
   {
     order: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
-      required: true
+      required: true,
     },
-    name: {
+    productName: {
       type: String,
-      required: true
+      required: true,
+      trim: true,
     },
-    description: String,
     quantity: {
       type: Number,
       required: true,
+      min: 1,
       default: 1,
-      min: 1
     },
-    weight: Number, // in kg
-    category: {
-      type: String,
-      enum: ['document', 'parcel', 'food', 'grocery', 'medicine', 'electronics', 'clothing', 'other'],
-      default: 'parcel'
-    },
-    dimensions: {
-      length: Number, // cm
-      width: Number,  // cm
-      height: Number  // cm
-    },
-    fragile: {
-      type: Boolean,
-      default: false
-    },
-    estimatedValue: {
+    price: {
       type: Number,
-      default: 0
+      required: true,
+      default: 0,
     },
-    specialInstructions: String,
-    image: String
+    total: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    description: { type: String, trim: true, default: '' },
+    category: { type: String, trim: true, default: 'parcel' },
+    weight: { type: Number, min: 0, default: 0 },
+    fragile: { type: Boolean, default: false },
+    // ---- Rider-assisted purchase confirmation ----
+    isAvailable: { type: Boolean, default: true },
+    purchasedQuantity: { type: Number, default: 0, min: 0 },
+    actualPrice: { type: Number, default: 0, min: 0 },
+    purchaseNote: { type: String, default: '' },
+    confirmed: { type: Boolean, default: false },
+    confirmedAt: Date,
   },
-  {
-    timestamps: true
-  }
-);
+  { timestamps: true }
+)
 
-module.exports = mongoose.model('OrderItem', orderItemSchema);
+orderItemSchema.pre('save', function (next) {
+  this.total = (this.quantity || 0) * (this.price || 0)
+  next()
+})
+
+export default mongoose.model('OrderItem', orderItemSchema)
