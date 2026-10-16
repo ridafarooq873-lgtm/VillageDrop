@@ -19,7 +19,18 @@ const httpServer = http.createServer(app)
 
 // CORS
 const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173'
-app.use(cors({ origin: clientUrl, credentials: true }))
+const allowedClientOrigins = new Set([clientUrl])
+if (process.env.NODE_ENV !== 'production') {
+  allowedClientOrigins.add('http://localhost:5173')
+  allowedClientOrigins.add('http://127.0.0.1:5173')
+}
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedClientOrigins.has(origin)) return callback(null, true)
+    return callback(new Error('Origin is not allowed by CORS'))
+  },
+  credentials: true,
+}))
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }))
@@ -74,7 +85,7 @@ app.use((err, req, res, next) => {
 })
 
 // Initialize socket
-initSocket(httpServer, { origin: clientUrl })
+initSocket(httpServer, { origin: [...allowedClientOrigins] })
 
 const PORT = process.env.PORT || 5000
 

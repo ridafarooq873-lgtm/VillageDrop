@@ -49,8 +49,11 @@ and rotated on use.
 
 | Variable | Description | Default |
 |---|---|---|
-| `VITE_API_URL` | REST base URL | `http://localhost:5000/api` |
-| `VITE_SOCKET_URL` | Socket.IO origin | `http://localhost:5000` |
+| `VITE_API_URL` | REST base URL; use `/api` locally to use the Vite proxy, or an absolute API URL in production | `/api` |
+
+Socket.IO uses the API URL's origin. With `/api` in local development it uses
+the current frontend origin and Vite proxies the socket connection to the
+backend, avoiding localhost-versus-127.0.0.1 CORS mismatches.
 
 ---
 
