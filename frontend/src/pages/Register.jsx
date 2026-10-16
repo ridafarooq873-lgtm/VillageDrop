@@ -7,7 +7,8 @@ import './Register.css';
 const Register = () => {
   const [formData, setFormData] = useState({
     name: '', email: '', phone: '', password: '', confirmPassword: '',
-    street: '', city: '', village: '', state: '', pincode: ''
+    street: '', city: '', village: '', state: '', pincode: '',
+    role: 'customer', vehicleType: 'motorcycle', vehicleNumber: '', licenseNumber: ''
   });
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
@@ -41,9 +42,22 @@ const Register = () => {
         address
       };
 
-      await register(payload);
-      toast.success('Registration successful!');
-      navigate('/dashboard');
+      const user = await register({
+        ...payload,
+        role: formData.role,
+        ...(formData.role === 'rider' ? {
+          vehicleType: formData.vehicleType,
+          vehicleNumber: formData.vehicleNumber,
+          licenseNumber: formData.licenseNumber
+        } : {})
+      });
+      if (user.role === 'rider') {
+        toast.success('Application submitted. You can sign in while it awaits admin approval.');
+        navigate('/rider');
+      } else {
+        toast.success('Registration successful!');
+        navigate('/dashboard');
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Registration failed');
     } finally {
@@ -55,9 +69,26 @@ const Register = () => {
     <div className="auth-container">
       <div className="auth-card register-card">
         <h2 className="auth-title">Join Village Drop</h2>
-        <p className="auth-subtitle">Create your account to start shipping</p>
+        <p className="auth-subtitle">Create a customer account or apply to deliver as a rider</p>
         
         <form onSubmit={handleSubmit} className="register-form">
+          <div className="form-section">
+            <h3>Account Type</h3>
+            <div className="form-group">
+              <label htmlFor="account-role">I want to</label>
+              <select
+                id="account-role"
+                name="role"
+                className="form-control"
+                value={formData.role}
+                onChange={handleChange}
+              >
+                <option value="customer">Send and track deliveries</option>
+                <option value="rider">Apply to deliver as a rider</option>
+              </select>
+            </div>
+          </div>
+
           <div className="form-section">
             <h3>Personal Info</h3>
             <div className="form-group">
@@ -81,6 +112,36 @@ const Register = () => {
               <input type="password" name="confirmPassword" className="form-control" required onChange={handleChange} />
             </div>
           </div>
+
+          {formData.role === 'rider' && (
+            <div className="form-section">
+              <h3>Rider Application</h3>
+              <p>Your account will be reviewed by an administrator before you can accept orders.</p>
+              <div className="form-group">
+                <label htmlFor="vehicleType">Vehicle type</label>
+                <select
+                  id="vehicleType"
+                  name="vehicleType"
+                  className="form-control"
+                  value={formData.vehicleType}
+                  onChange={handleChange}
+                >
+                  <option value="bicycle">Bicycle</option>
+                  <option value="motorcycle">Motorcycle</option>
+                  <option value="auto">Auto</option>
+                  <option value="van">Van</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="vehicleNumber">Vehicle number</label>
+                <input id="vehicleNumber" name="vehicleNumber" className="form-control" required value={formData.vehicleNumber} onChange={handleChange} />
+              </div>
+              <div className="form-group">
+                <label htmlFor="licenseNumber">License number</label>
+                <input id="licenseNumber" name="licenseNumber" className="form-control" required value={formData.licenseNumber} onChange={handleChange} />
+              </div>
+            </div>
+          )}
 
           <div className="form-section">
             <h3>Address Details</h3>

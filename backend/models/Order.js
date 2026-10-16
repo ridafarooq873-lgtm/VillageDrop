@@ -92,7 +92,7 @@ const orderSchema = new mongoose.Schema(
         default: 'na'
       }
     },
-    deliveryPin: String, // 4-digit PIN
+    deliveryPin: { type: String, select: false },
     trackingUpdates: [
       {
         status: String,

@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
 import { getNotifications, markNotificationRead as markReadApi } from '../api/customerApi';
+import { getRiderNotifications, markRiderNotificationRead } from '../api/riderApi';
 
 const SocketContext = createContext(null);
 
@@ -23,6 +24,7 @@ const normalizeNotification = (n) => ({
 
 export const SocketProvider = ({ children }) => {
   const { token, user } = useAuth();
+  const role = user?.role;
   const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
   const [notifications, setNotifications] = useState([]);
@@ -69,11 +71,14 @@ export const SocketProvider = ({ children }) => {
 
   // Load notification history on mount (customer REST endpoint)
   useEffect(() => {
-    if (!token || !user) return;
+    if (!token || !user || !['customer', 'rider'].includes(role)) return;
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await getNotifications();
+        const response = role === 'rider'
+          ? await getRiderNotifications()
+          : await getNotifications();
+        const { data } = response;
         if (!cancelled) {
           setNotifications((data.data || []).map(normalizeNotification));
         }
@@ -84,25 +89,30 @@ export const SocketProvider = ({ children }) => {
     return () => {
       cancelled = true;
     };
-  }, [token, user]);
+  }, [token, user, role]);
 
   const markRead = useCallback(async (id) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     try {
-      await markReadApi(id);
+      if (role === 'rider') await markRiderNotificationRead(id);
+      else if (role === 'customer') await markReadApi(id);
     } catch {
-      // Endpoint is customer-only; ignore failures for other roles
+      // Keep the notification marked locally if the API is unavailable.
     }
-  }, []);
+  }, [role]);
 
   const refreshNotifications = useCallback(async () => {
     try {
-      const { data } = await getNotifications();
+      if (!['customer', 'rider'].includes(role)) return;
+      const response = role === 'rider'
+        ? await getRiderNotifications()
+        : await getNotifications();
+      const { data } = response;
       setNotifications((data.data || []).map(normalizeNotification));
     } catch {
       // ignore
     }
-  }, []);
+  }, [role]);
 
   const value = useMemo(
     () => ({

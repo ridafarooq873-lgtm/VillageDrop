@@ -1,10 +1,13 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
+const Rider = require('../models/Rider');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
+let adminBootstrapInProgress = false;
 
 // @route   POST /api/auth/register
 // @desc    Register a user
@@ -12,10 +15,11 @@ const router = express.Router();
 router.post(
   '/register',
   [
-    body('name', 'Please add a name').not().isEmpty(),
-    body('email', 'Please include a valid email').isEmail(),
-    body('phone', 'Please add a valid phone number').isLength({ min: 10 }),
-    body('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 })
+    body('name', 'Please add a name').trim().notEmpty(),
+    body('email', 'Please include a valid email').isEmail().normalizeEmail(),
+    body('phone', 'Please add a valid phone number').isMobilePhone('any'),
+    body('password', 'Please enter a password with 6 or more characters').isLength({ min: 6 }),
+    body('role').optional().isIn(['customer', 'rider'])
   ],
   async (req, res) => {
     const errors = validationResult(req);
@@ -23,25 +27,47 @@ router.post(
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { name, email, phone, password, role, address } = req.body;
+    const { name, email, phone, password, role = 'customer', address, vehicleType, vehicleNumber, licenseNumber } = req.body || {};
+    if (role === 'rider' && (
+      !['bicycle', 'motorcycle', 'auto', 'van'].includes(vehicleType) ||
+      !String(vehicleNumber || '').trim() ||
+      !String(licenseNumber || '').trim()
+    )) {
+      return res.status(400).json({
+        success: false,
+        message: 'Rider registration requires a valid vehicle type, vehicle number, and license number'
+      });
+    }
 
+    let user;
     try {
       // Check if user exists
-      let user = await User.findOne({ $or: [{ email }, { phone }] });
+      user = await User.findOne({ $or: [{ email }, { phone }] });
 
       if (user) {
         return res.status(400).json({ success: false, message: 'User already exists with that email or phone' });
       }
 
-      // Create user
       user = await User.create({
         name,
-        email,
+        email: email.toLowerCase(),
         phone,
         password,
-        role: role || 'customer',
+        role,
         address
       });
+
+      if (role === 'rider') {
+        await Rider.create({
+          user: user._id,
+          vehicleType,
+          vehicleNumber: vehicleNumber.trim(),
+          licenseNumber: licenseNumber.trim(),
+          isAvailable: false,
+          isApproved: false,
+          approvalStatus: 'pending'
+        });
+      }
 
       // Generate tokens
       const accessToken = user.generateAuthToken();
@@ -59,15 +85,68 @@ router.post(
           id: user._id,
           name: user.name,
           email: user.email,
-          role: user.role
+          role: user.role,
+          ...(role === 'rider' ? { approvalStatus: 'pending' } : {})
         }
       });
     } catch (err) {
+      if (user?._id) await User.deleteOne({ _id: user._id });
+      if (user?._id) await Rider.deleteOne({ user: user._id });
       console.error(err.message);
       res.status(500).send('Server Error');
     }
   }
 );
+
+router.post('/bootstrap-admin', async (req, res) => {
+  const bootstrapKey = process.env.ADMIN_BOOTSTRAP_KEY;
+  if (!bootstrapKey || bootstrapKey.length < 32) {
+    return res.status(503).json({ success: false, message: 'Admin bootstrap is not configured' });
+  }
+
+  const expected = Buffer.from(bootstrapKey);
+  const supplied = Buffer.from(req.get('x-admin-bootstrap-key') || '');
+  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+    return res.status(401).json({ success: false, message: 'Invalid bootstrap key' });
+  }
+  if (adminBootstrapInProgress) {
+    return res.status(409).json({ success: false, message: 'Admin bootstrap is already in progress' });
+  }
+
+  const { name, email, phone, password } = req.body || {};
+  if (typeof name !== 'string' || !name.trim() ||
+    typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    typeof phone !== 'string' || !/^\+?[\d\s()-]{10,20}$/.test(phone) ||
+    typeof password !== 'string' || password.length < 12) {
+    return res.status(400).json({
+      success: false,
+      message: 'Name, email, phone, and a password of at least 12 characters are required'
+    });
+  }
+
+  adminBootstrapInProgress = true;
+  try {
+    if (await User.exists({ role: 'admin' })) {
+      return res.status(409).json({ success: false, message: 'An admin account already exists' });
+    }
+
+    const existing = await User.findOne({ $or: [{ email: email.toLowerCase() }, { phone }] });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'An account already exists with that email or phone' });
+    }
+
+    await User.create({ name: name.trim(), email: email.toLowerCase(), phone, password, role: 'admin' });
+    return res.status(201).json({
+      success: true,
+      message: 'Admin account created. Sign in using the regular login page.'
+    });
+  } catch (err) {
+    console.error(err.message);
+    return res.status(500).json({ success: false, message: 'Could not create admin account' });
+  } finally {
+    adminBootstrapInProgress = false;
+  }
+});
 
 // @route   POST /api/auth/login
 // @desc    Authenticate user & get token
@@ -141,7 +220,8 @@ router.post('/refresh-token', async (req, res) => {
   }
 
   try {
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+    const decoded = jwt.verify(refreshToken, refreshSecret);
     
     const user = await User.findById(decoded.id).select('+refreshToken');
     if (!user || user.refreshToken !== refreshToken) {

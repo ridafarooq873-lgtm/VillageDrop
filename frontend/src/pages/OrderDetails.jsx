@@ -50,7 +50,10 @@ const OrderDetails = () => {
     const onStatusUpdate = (payload) => {
       if (!payload || String(payload.orderId) !== String(id)) return;
       if (payload.updatedOrder) {
-        setOrder(payload.updatedOrder);
+        setOrder((current) => ({
+          ...payload.updatedOrder,
+          deliveryPin: current?.deliveryPin,
+        }));
       } else {
         fetchOrder();
       }

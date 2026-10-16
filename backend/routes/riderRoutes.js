@@ -4,6 +4,7 @@ const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 const Order = require('../models/Order');
 const Rider = require('../models/Rider');
+const Notification = require('../models/Notification');
 const { applyStatusChange, acceptOrder } = require('../services/orderStatusService');
 
 router.use(protect);
@@ -13,9 +14,27 @@ router.use(authorize('rider'));
 const getRiderProfile = async (userId) => {
   let rider = await Rider.findOne({ user: userId });
   if (!rider) {
-    rider = await Rider.create({ user: userId, isAvailable: true, isApproved: false });
+    rider = await Rider.create({
+      user: userId,
+      isAvailable: false,
+      isApproved: false,
+      approvalStatus: 'pending'
+    });
   }
   return rider;
+};
+
+const requireApprovedRider = (rider, res) => {
+  if (!rider.isApproved || rider.approvalStatus === 'rejected') {
+    res.status(403).json({
+      success: false,
+      message: rider.approvalStatus === 'rejected'
+        ? `Your rider application was not approved${rider.rejectionReason ? `: ${rider.rejectionReason}` : ''}`
+        : 'Your rider account is waiting for admin approval'
+    });
+    return false;
+  }
+  return true;
 };
 
 // @route   GET /api/rider
@@ -31,8 +50,12 @@ router.get('/', (req, res) => {
 router.get('/orders', async (req, res) => {
   try {
     const rider = await getRiderProfile(req.user.id);
+    await rider.populate('user', 'name email phone');
+    if (!rider.isApproved || rider.approvalStatus === 'rejected') {
+      return res.status(200).json({ success: true, data: { available: [], assigned: [], rider } });
+    }
 
-    const [available, assigned] = await Promise.all([
+    const [available, assigned, totalDeliveries] = await Promise.all([
       Order.find({ status: 'pending', rider: null })
         .populate('items')
         .populate('customer', 'name phone')
@@ -41,10 +64,11 @@ router.get('/orders', async (req, res) => {
       Order.find({ rider: rider._id, status: { $nin: ['delivered', 'cancelled'] } })
         .populate('items')
         .populate('customer', 'name phone')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1 }),
+      Order.countDocuments({ rider: rider._id, status: 'delivered' })
     ]);
 
-    res.status(200).json({ success: true, data: { available, assigned, rider } });
+    res.status(200).json({ success: true, data: { available, assigned, totalDeliveries, rider } });
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server Error');
@@ -57,13 +81,30 @@ router.get('/orders', async (req, res) => {
 router.put('/orders/:id/accept', async (req, res) => {
   try {
     const rider = await getRiderProfile(req.user.id);
+    if (!requireApprovedRider(rider, res)) return;
+    if (!rider.isAvailable) {
+      return res.status(403).json({ success: false, message: 'Set your availability to online before accepting orders' });
+    }
 
-    const order = await Order.findOne({ _id: req.params.id, status: 'pending', rider: null });
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending', rider: null },
+      { $set: { rider: rider._id } },
+      { new: true }
+    );
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not available for acceptance' });
     }
 
-    const updatedOrder = await acceptOrder(order, rider);
+    let updatedOrder;
+    try {
+      updatedOrder = await acceptOrder(order, rider);
+    } catch (error) {
+      await Order.updateOne(
+        { _id: order._id, status: 'pending', rider: rider._id },
+        { $unset: { rider: 1 } }
+      );
+      throw error;
+    }
 
     res.status(200).json({ success: true, data: updatedOrder });
   } catch (err) {
@@ -82,6 +123,7 @@ router.put('/orders/:id/accept', async (req, res) => {
 router.put('/orders/:id/status', async (req, res) => {
   try {
     const rider = await getRiderProfile(req.user.id);
+    if (!requireApprovedRider(rider, res)) return;
     const { status, note, location, pin } = req.body;
 
     const RIDER_STATUSES = ['assigned', 'purchasing', 'picked_up', 'in_transit', 'delivered'];
@@ -92,7 +134,8 @@ router.put('/orders/:id/status', async (req, res) => {
       });
     }
 
-    const order = await Order.findOne({ _id: req.params.id, rider: rider._id });
+    const order = await Order.findOne({ _id: req.params.id, rider: rider._id })
+      .select('+deliveryPin');
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found or not assigned to you' });
     }
@@ -109,7 +152,6 @@ router.put('/orders/:id/status', async (req, res) => {
       note,
       location
     });
-
     res.status(200).json({ success: true, data: updatedOrder });
   } catch (err) {
     console.error(err.message);
@@ -117,6 +159,53 @@ router.put('/orders/:id/status', async (req, res) => {
       return res.status(err.statusCode).json({ success: false, message: err.message });
     }
     res.status(500).send('Server Error');
+  }
+});
+
+router.put('/availability', async (req, res) => {
+  const { isAvailable } = req.body || {};
+  if (typeof isAvailable !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'isAvailable must be a boolean' });
+  }
+
+  try {
+    const rider = await getRiderProfile(req.user.id);
+    if (!requireApprovedRider(rider, res)) return;
+    rider.isAvailable = isAvailable;
+    await rider.save();
+    return res.status(200).json({ success: true, data: { isAvailable: rider.isAvailable } });
+  } catch (err) {
+    console.error(err.message);
+    return res.status(500).json({ success: false, message: 'Could not update availability' });
+  }
+});
+
+router.get('/notifications', async (req, res) => {
+  try {
+    const notifications = await Notification.find({ user: req.user.id })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    return res.status(200).json({ success: true, data: notifications });
+  } catch (err) {
+    console.error(err.message);
+    return res.status(500).json({ success: false, message: 'Could not load notifications' });
+  }
+});
+
+router.put('/notifications/:id/read', async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, user: req.user.id },
+      { isRead: true },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ success: false, message: 'Notification not found' });
+    }
+    return res.status(200).json({ success: true, data: notification });
+  } catch (err) {
+    console.error(err.message);
+    return res.status(500).json({ success: false, message: 'Could not update notification' });
   }
 });
 

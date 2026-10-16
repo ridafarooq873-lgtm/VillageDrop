@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../hooks/useAuth';
+import { roleHomePath } from '../utils/roleRoutes';
 import './Login.css';
 
 const Login = () => {
@@ -11,7 +12,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const from = location.state?.from?.pathname || '/dashboard';
+  const from = location.state?.from?.pathname;
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -21,9 +22,15 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(formData);
+      const user = await login(formData);
       toast.success('Logged in successfully!');
-      navigate(from, { replace: true });
+      const roleHome = roleHomePath(user.role);
+      const safeFrom = from && (
+        (user.role === 'customer' && ['/dashboard', '/orders', '/orders/new'].some((path) => from === path || from.startsWith(`${path}/`))) ||
+        (user.role === 'rider' && from.startsWith('/rider')) ||
+        (user.role === 'admin' && from.startsWith('/admin'))
+      );
+      navigate(safeFrom ? from : roleHome, { replace: true });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Login failed');
     } finally {

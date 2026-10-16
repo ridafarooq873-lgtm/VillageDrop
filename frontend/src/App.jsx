@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
@@ -12,7 +12,16 @@ import Dashboard from './pages/Dashboard';
 import CreateOrder from './pages/CreateOrder';
 import OrderHistory from './pages/OrderHistory';
 import OrderDetails from './pages/OrderDetails';
+import RiderPortal from './pages/RiderPortal';
+import AdminPortal from './pages/AdminPortal';
+import { roleHomePath } from './utils/roleRoutes';
+import { useAuth } from './hooks/useAuth';
 import './App.css';
+
+const RoleHome = () => {
+  const { user } = useAuth();
+  return <Navigate to={roleHomePath(user?.role)} replace />;
+};
 
 function App() {
   return (
@@ -27,12 +36,19 @@ function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
 
-                <Route element={<ProtectedRoute />}>
+                <Route element={<ProtectedRoute roles={['customer']} />}>
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/orders" element={<OrderHistory />} />
                   <Route path="/orders/new" element={<CreateOrder />} />
                   <Route path="/orders/:id" element={<OrderDetails />} />
                 </Route>
+                <Route element={<ProtectedRoute roles={['rider']} />}>
+                  <Route path="/rider" element={<RiderPortal />} />
+                </Route>
+                <Route element={<ProtectedRoute roles={['admin']} />}>
+                  <Route path="/admin" element={<AdminPortal />} />
+                </Route>
+                <Route path="*" element={<RoleHome />} />
               </Routes>
             </main>
             <Footer />

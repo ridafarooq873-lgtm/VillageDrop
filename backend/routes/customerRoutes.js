@@ -163,7 +163,9 @@ router.post(
         throw innerErr;
       }
 
-      const populatedOrder = await Order.findById(newOrder._id).populate('items');
+      const populatedOrder = await Order.findById(newOrder._id)
+        .select('+deliveryPin')
+        .populate('items');
 
       res.status(201).json({
         success: true,
@@ -214,6 +216,7 @@ router.get('/orders', async (req, res) => {
 router.get('/orders/:id', async (req, res) => {
   try {
     const order = await Order.findOne({ _id: req.params.id, customer: req.user.id })
+      .select('+deliveryPin')
       .populate('items')
       .populate({ path: 'rider', populate: { path: 'user', select: 'name phone' } });
 

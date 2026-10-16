@@ -44,6 +44,7 @@ npm install --prefix frontend
 | `USE_MEMORY_DB` | `true`/`false` to force/disable the embedded DB | auto in dev |
 | `MONGO_URI` | External MongoDB URI (production) | — |
 | `MONGO_DB_PATH` | Override the embedded DB data directory | `backend/.mongo-data` |
+| `ADMIN_BOOTSTRAP_KEY` | One-time key used to create the first admin account (minimum 32 characters) | — |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | Reserved | — |
 
 > The JWT expiry/refresh variables have code-level fallbacks, so the server still
@@ -63,6 +64,8 @@ npm install --prefix frontend
 Start the backend (embedded MongoDB comes up automatically):
 
 ```powershell
+npm run dev:backend            # from the repository root
+# or
 npm run dev --prefix backend   # nodemon, auto-reload
 # or
 npm start --prefix backend
@@ -71,15 +74,30 @@ npm start --prefix backend
 Start the frontend:
 
 ```powershell
+npm run dev                # from the repository root
+# or
 npm run dev --prefix frontend  # http://localhost:5173
 ```
 
-Production build / lint for the frontend:
+Production build / lint:
 
 ```powershell
+npm run build
+npm run lint
+# or
 npm run build --prefix frontend
 npm run lint  --prefix frontend
 ```
+
+### First admin account
+
+Set a long, random `ADMIN_BOOTSTRAP_KEY` in `backend/.env` before starting the
+backend. Create the first admin once by calling `POST /api/auth/bootstrap-admin`
+with that value in the `x-admin-bootstrap-key` header and a JSON body containing
+`name`, `email`, `phone`, and a password of at least 12 characters. The endpoint
+is disabled until the key is configured and refuses to create another admin
+after one exists. Remove `ADMIN_BOOTSTRAP_KEY` from the environment after setup.
+Never use the public registration form to create an administrator.
 
 ---
 
@@ -96,8 +114,8 @@ backend/
   routes/
     authRoutes.js               # register / login / refresh / logout / me
     customerRoutes.js           # customer dashboard, orders, notifications, reviews
-    riderRoutes.js              # rider order queue, accept, status updates
-    adminRoutes.js              # admin order oversight
+    riderRoutes.js              # rider onboarding, availability, queue, status updates
+    adminRoutes.js              # rider approvals, order oversight
   services/orderStatusService.js# status transitions, events, notifications
   sockets/orderTracking.js      # socket auth, rooms, location relay
 
@@ -107,7 +125,7 @@ frontend/src/
   context/AuthContext.jsx       # session, login/register/logout
   context/SocketContext.jsx     # socket connection + live notifications
   components/                   # Navbar (notification bell), ProtectedRoute, ...
-  pages/                        # Landing, Login, Register, Dashboard, Orders
+  pages/                        # Customer, rider, and admin portals
 ```
 
 ---
@@ -116,7 +134,12 @@ frontend/src/
 
 Roles: `customer`, `rider`, `admin` (default `customer`).
 
+- Public registration can create a customer or submit a rider application; it
+  cannot grant the `admin` role. Rider applications include vehicle and license
+  information and remain unavailable until an admin approves them.
 - `POST /api/auth/register` → `{ accessToken, refreshToken, user }`
+- `POST /api/auth/bootstrap-admin` → one-time first-admin setup; requires the
+  `x-admin-bootstrap-key` header and a 12+ character password
 - `POST /api/auth/login`
 - `POST /api/auth/refresh-token` → rotates the refresh token
 - `POST /api/auth/logout` → clears the stored refresh token
@@ -130,6 +153,18 @@ the DB, so role changes take effect immediately) followed by `authorize(role)`:
 | `/api/customer/*` | `authorize('customer')` |
 | `/api/rider/*` | `authorize('rider')` |
 | `/api/admin/*` | `authorize('admin')` |
+
+The frontend routes each role to its own portal: customers use `/dashboard`,
+riders use `/rider`, and administrators use `/admin`. Riders can go online,
+accept open orders, advance assigned deliveries, and confirm delivery with the
+customer's PIN. Admins can review/reject rider applications and monitor orders.
+Refresh tokens are rotated automatically when an API request receives an
+expired-access-token response.
+
+Admin endpoints include `GET /api/admin/overview`, `GET /api/admin/riders`,
+`PUT /api/admin/riders/:id/approval`, and `GET /api/admin/orders`. Rider
+endpoints include `PUT /api/rider/availability` and rider-scoped notification
+history/read routes.
 
 ---
 
@@ -195,22 +230,28 @@ notifications read via `PUT /api/customer/notifications/:id/read`.
 
 ## Testing
 
-An end-to-end test drives the full lifecycle against a spawned backend and
-asserts the socket events the UI depends on:
+There is no automated end-to-end test runner configured yet. The following
+checks were exercised against a local backend and browser:
 
-1. Register a customer and a rider, verify login.
-2. Create an order; verify an invalid item category returns `400` and leaves no
-   orphaned order.
-3. Connect a customer socket to `/tracking`, join the order room.
-4. Rider accepts → `orderStatusUpdated` + `orderAccepted` + `newNotification`.
-5. Ride `picked_up → in_transit → delivered` → matching events; verify a wrong
-   delivery PIN and an invalid transition are both rejected with `400`.
-6. Assert notification payload shape and user/order scoping.
+- Register/login as customer and rider; verify role-specific routing.
+- Confirm public admin registration is rejected and bootstrap cannot be reused.
+- Submit a rider application; confirm an unapproved rider cannot accept work.
+- Approve/reject applications in the admin portal; verify the rider sees the
+  resulting state and rejection reason.
+- Create an order, accept it as an online rider, advance delivery statuses,
+  reject an incorrect delivery PIN, and complete with the customer's PIN.
+- Verify role-protected APIs, rider notification history, delivery PIN privacy,
+  and automatic refresh-token rotation.
 
-Manual checks used during development:
+Run the available project checks from the repository root:
 
-- `npm run build --prefix frontend` and `npm run lint --prefix frontend`
-- `node --check` on every modified backend file
+```powershell
+npm run build
+npm run lint
+```
+
+Backend JavaScript syntax can be checked with `node --check` on files in
+`backend/`.
 
 ---
 
@@ -234,13 +275,9 @@ match. Backend CORS is pinned to `http://localhost:5173`.
 
 ## Known issues / follow-ups
 
-- **Registration privilege escalation** — `POST /api/auth/register` accepts a
-  `role` in the body, so anyone can self-register as `admin`. Restrict this to a
-  safe allowlist or an admin-only endpoint.
-- **No role-based frontend routing** — `ProtectedRoute` checks authentication
-  only; riders/admins are sent to the customer dashboard and have no dedicated
-  pages yet.
-- **Refresh tokens unused by the frontend** — the axios interceptor clears the
-  token on `401` instead of performing a silent refresh.
-- **Rider approval not enforced** — `Rider.isApproved` exists but is not checked
-  at login or before accepting orders.
+- Online payments, maps, and geocoding are not integrated; delivery distance and
+  fees remain estimates.
+- Rider approval currently verifies submitted information through an admin
+  review; automated identity/license verification is not integrated.
+- Configure production secrets, MongoDB, CORS origins, HTTPS, and rate limiting
+  before exposing the service publicly.

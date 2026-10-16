@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import api, { TOKEN_KEY } from '../api/axios';
+import api, { REFRESH_TOKEN_KEY, TOKEN_KEY } from '../api/axios';
 
 export const AuthContext = createContext(null);
 
@@ -41,13 +41,30 @@ export const AuthProvider = ({ children }) => {
   }, [persistToken]);
 
   useEffect(() => {
-    loadUser();
+    const onTokenRefreshed = (event) => setToken(event.detail.accessToken);
+    const onSessionExpired = () => {
+      setToken(null);
+      setUser(null);
+    };
+    window.addEventListener('auth:token-refreshed', onTokenRefreshed);
+    window.addEventListener('auth:session-expired', onSessionExpired);
+    return () => {
+      window.removeEventListener('auth:token-refreshed', onTokenRefreshed);
+      window.removeEventListener('auth:session-expired', onSessionExpired);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (readToken()) {
+      loadUser();
+    }
   }, [loadUser]);
 
   const login = useCallback(
     async ({ email, password }) => {
       const { data } = await api.post('/auth/login', { email, password });
       persistToken(data.accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
       setUser(data.user);
       return data.user;
     },
@@ -58,6 +75,7 @@ export const AuthProvider = ({ children }) => {
     async (payload) => {
       const { data } = await api.post('/auth/register', payload);
       persistToken(data.accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, data.refreshToken);
       setUser(data.user);
       return data.user;
     },
@@ -73,6 +91,7 @@ export const AuthProvider = ({ children }) => {
       // Ignore network errors on logout.
     } finally {
       persistToken(null);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
       setUser(null);
     }
   }, [persistToken]);

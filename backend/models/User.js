@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 
 const userSchema = new mongoose.Schema(
   {
@@ -86,9 +87,11 @@ userSchema.methods.generateAuthToken = function () {
 
 // Generate Refresh Token
 userSchema.methods.generateRefreshToken = function () {
-  return jwt.sign({ id: this._id }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d'
-  });
+  return jwt.sign(
+    { id: this._id, jti: crypto.randomUUID() },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d' }
+  );
 };
 
 module.exports = mongoose.model('User', userSchema);
