@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import client from '../../api/client.js'
 import Spinner from '../../components/Spinner.jsx'
+import { formatPKR } from '../../utils/currency.js'
 
 const FIELDS = [
-  { key: 'base', label: 'Base fee (Rs)', hint: 'Flat fee when no distance is given' },
-  { key: 'perKm', label: 'Per km (Rs)', hint: 'Charged for every kilometre' },
-  { key: 'minFee', label: 'Minimum fee (Rs)', hint: '0 = no minimum' },
-  { key: 'maxFee', label: 'Maximum fee (Rs)', hint: '0 = no cap' },
+  { key: 'base', label: 'Base fee (PKR)', hint: 'Flat fee when no distance is given' },
+  { key: 'perKm', label: 'Per km (PKR)', hint: 'Charged for every kilometre' },
+  { key: 'minFee', label: 'Minimum fee (PKR)', hint: '0 = no minimum' },
+  { key: 'maxFee', label: 'Maximum fee (PKR)', hint: '0 = no cap' },
   { key: 'surge', label: 'Surge multiplier', hint: 'e.g. 1.5 = +50% (max 5)', step: '0.1' },
   {
     key: 'commissionRate',
@@ -17,7 +18,7 @@ const FIELDS = [
   },
   {
     key: 'minimumPayout',
-    label: 'Minimum payout (Rs)',
+    label: 'Minimum payout (PKR)',
     hint: 'Rider net earnings must reach this before a payout is generated',
   },
 ]
@@ -126,7 +127,7 @@ export default function AdminFees() {
           </button>
           {saved?.updatedAt && (
             <p className="muted small">
-              Last updated {new Date(saved.updatedAt).toLocaleString()}
+              Last updated {new Date(saved.updatedAt).toLocaleString('en-PK')}
             </p>
           )}
         </form>
@@ -153,18 +154,18 @@ export default function AdminFees() {
                   return (
                     <tr key={km}>
                       <td>{km} km</td>
-                      <td><strong>Rs {fee}</strong></td>
-                      <td className="muted">Rs {commission}</td>
-                      <td>Rs {fee - commission}</td>
+                      <td><strong>{formatPKR(fee)}</strong></td>
+                      <td className="muted">{formatPKR(commission)}</td>
+                      <td>{formatPKR(fee - commission)}</td>
                     </tr>
                   )
                 })}
                 <tr>
                   <td className="muted">no distance</td>
-                  <td className="muted">Rs {previewFee(values, 0)}</td>
-                  <td className="muted">Rs {Math.round(previewFee(values, 0) * commissionRate)}</td>
+                  <td className="muted">{formatPKR(previewFee(values, 0))}</td>
+                  <td className="muted">{formatPKR(Math.round(previewFee(values, 0) * commissionRate))}</td>
                   <td className="muted">
-                    Rs {previewFee(values, 0) - Math.round(previewFee(values, 0) * commissionRate)}
+                    {formatPKR(previewFee(values, 0) - Math.round(previewFee(values, 0) * commissionRate))}
                   </td>
                 </tr>
               </tbody>
@@ -172,7 +173,7 @@ export default function AdminFees() {
           </div>
           <p className="muted small">
             Existing orders keep the fee and commission they were created/delivered with; only new
-            orders and deliveries use the new configuration. Minimum payout is Rs {values.minimumPayout}.
+            orders and deliveries use the new configuration. Minimum payout is {formatPKR(values.minimumPayout)}.
           </p>
         </div>
       </div>

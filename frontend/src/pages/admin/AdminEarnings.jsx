@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import client from '../../api/client.js'
 import { useRealtimeTick } from '../../context/SocketContext.jsx'
 import Spinner from '../../components/Spinner.jsx'
+import { formatPKR } from '../../utils/currency.js'
 
 const PAYOUT_PILL = {
   pending: 'pill-amber',
@@ -14,7 +15,7 @@ const PAYOUT_PILL = {
 
 const STATUS_TABS = ['', 'pending', 'processing', 'paid', 'failed', 'cancelled']
 
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : '—')
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-PK') : '—')
 
 function Stat({ value, label, tone }) {
   return (
@@ -71,7 +72,7 @@ export default function AdminEarnings() {
         ignoreMinimum: override,
       })
       setMessage(
-        `Payout of Rs ${data.payout.amount} created for ${entry.name} (${data.summary.orders} order${data.summary.orders === 1 ? '' : 's'}).`
+        `Payout of ${formatPKR(data.payout.amount)} created for ${entry.name} (${data.summary.orders} order${data.summary.orders === 1 ? '' : 's'}).`
       )
       await load(filter)
     } catch (err) {
@@ -87,7 +88,7 @@ export default function AdminEarnings() {
   }
 
   const updateStatus = async (payout, status) => {
-    if (status === 'cancelled' && !window.confirm(`Cancel payout of Rs ${payout.amount}? Earnings return to the rider's unsettled balance.`)) {
+    if (status === 'cancelled' && !window.confirm(`Cancel payout of ${formatPKR(payout.amount)}? Earnings return to the rider's unsettled balance.`)) {
       return
     }
     setBusy(payout._id)
@@ -124,11 +125,11 @@ export default function AdminEarnings() {
       {message && <div className="banner banner-approved">{message}</div>}
 
       <div className="stat-row">
-        <Stat value={`Rs ${platform.grossDeliveryFees}`} label="Gross delivery fees" />
-        <Stat value={`Rs ${platform.totalCommission}`} label={`Platform commission (${commissionPct}%)`} tone="green" />
-        <Stat value={`Rs ${platform.riderNet}`} label="Rider net earnings" />
-        <Stat value={`Rs ${payoutSummary.paidAmount}`} label="Paid out" />
-        <Stat value={`Rs ${payoutSummary.unsettledNet}`} label="Unsettled" tone={payoutSummary.unsettledNet > 0 ? 'amber' : undefined} />
+        <Stat value={formatPKR(platform.grossDeliveryFees)} label="Gross delivery fees" />
+        <Stat value={formatPKR(platform.totalCommission)} label={`Platform commission (${commissionPct}%)`} tone="green" />
+        <Stat value={formatPKR(platform.riderNet)} label="Rider net earnings" />
+        <Stat value={formatPKR(payoutSummary.paidAmount)} label="Paid out" />
+        <Stat value={formatPKR(payoutSummary.unsettledNet)} label="Unsettled" tone={payoutSummary.unsettledNet > 0 ? 'amber' : undefined} />
         <Stat value={platform.deliveredOrders} label="Delivered orders" />
       </div>
 
@@ -136,7 +137,7 @@ export default function AdminEarnings() {
         <div className="card-head">
           <h3>Earnings by rider</h3>
           <span className="muted small">
-            commission {commissionPct}% · minimum payout Rs {minimumPayout}
+            commission {commissionPct}% · minimum payout {formatPKR(minimumPayout)}
           </span>
         </div>
         {byRider.length === 0 ? (
@@ -162,9 +163,9 @@ export default function AdminEarnings() {
                       {r.riderCode && <div className="muted small mono">{r.riderCode}</div>}
                     </td>
                     <td>{r.orders}</td>
-                    <td>Rs {r.gross}</td>
-                    <td className="muted">− Rs {r.commission}</td>
-                    <td><strong>Rs {r.net}</strong></td>
+                    <td>{formatPKR(r.gross)}</td>
+                    <td className="muted">− {formatPKR(r.commission)}</td>
+                    <td><strong>{formatPKR(r.net)}</strong></td>
                     <td>
                       {r.riderId && (
                         <button
@@ -184,7 +185,7 @@ export default function AdminEarnings() {
         )}
         <p className="muted small">
           A payout covers all delivered orders not yet included in a pending, processing or paid
-          payout. Minimum payout of Rs {minimumPayout} applies per payout.
+          payout. Minimum payout of {formatPKR(minimumPayout)} applies per payout.
         </p>
       </div>
 
@@ -225,8 +226,8 @@ export default function AdminEarnings() {
                 {payouts.payouts.map((p) => (
                   <tr key={p._id}>
                     <td>{p.rider?.user?.name || p.rider?.riderId || '—'}</td>
-                    <td><strong>Rs {p.amount}</strong></td>
-                    <td className="muted">Rs {p.commission}</td>
+                    <td><strong>{formatPKR(p.amount)}</strong></td>
+                    <td className="muted">{formatPKR(p.commission)}</td>
                     <td>{p.orderCount}</td>
                     <td>{fmtDate(p.createdAt)}</td>
                     <td>

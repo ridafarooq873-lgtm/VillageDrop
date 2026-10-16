@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import client from '../api/client.js'
 import { useOrderRooms, useRealtimeTick } from '../context/SocketContext.jsx'
 import Spinner from '../components/Spinner.jsx'
+import { formatPKR } from '../utils/currency.js'
 
 const PURCHASE_LABEL = {
   not_required: 'Not required',
@@ -278,14 +279,14 @@ export default function PurchaseWorkflow() {
           <div className="step-title">
             <strong>Upload receipt &amp; record amount</strong>
             <span className="muted">
-              {step2Done ? `Recorded: Rs ${order.purchaseAmount}` : 'Upload the shop receipt and the total you spent'}
+              {step2Done ? `Recorded: ${formatPKR(order.purchaseAmount)}` : 'Upload the shop receipt and the total you spent'}
             </span>
           </div>
         </div>
 
         {step2Done ? (
           <div className="receipt-summary">
-            <span>Amount: Rs {order.purchaseAmount}</span>
+            <span>Amount: {formatPKR(order.purchaseAmount)}</span>
             {order.receiptUrl && (
               <a href={order.receiptUrl} target="_blank" rel="noreferrer">
                 View receipt
@@ -295,7 +296,7 @@ export default function PurchaseWorkflow() {
         ) : step1Done ? (
           <>
             <label className="field">
-              Purchase amount (Rs)
+              Purchase amount (PKR)
               <input
                 type="number"
                 min="0"
@@ -349,7 +350,7 @@ export default function PurchaseWorkflow() {
 
         {delivered ? (
           <div className="receipt-summary">
-            <span>Confirmed at {new Date(order.deliveryConfirmedAt || order.deliveredAt).toLocaleString()}</span>
+            <span>Confirmed at {new Date(order.deliveryConfirmedAt || order.deliveredAt).toLocaleString('en-PK')}</span>
             {order.deliveryProofUrl && (
               <a href={order.deliveryProofUrl} target="_blank" rel="noreferrer">
                 View proof

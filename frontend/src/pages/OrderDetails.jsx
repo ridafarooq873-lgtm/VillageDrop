@@ -7,6 +7,7 @@ import { useSocket } from '../context/SocketContext';
 import StatusBadge from '../components/StatusBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
 import TrackingTimeline from '../components/TrackingTimeline';
+import { formatPKR } from '../utils/currency.js';
 import './OrderDetails.css';
 
 const CANCELLABLE = ['pending', 'confirmed'];
@@ -110,7 +111,7 @@ const OrderDetails = () => {
           <h1>Order #{order.orderNumber}</h1>
           <p style={{ color: 'var(--text-secondary)' }}>
             {isRap ? 'Rider-Assisted Purchase' : 'Pickup & Delivery'} •{' '}
-            {new Date(order.createdAt).toLocaleString()}
+            {new Date(order.createdAt).toLocaleString('en-PK')}
           </p>
         </div>
         <div className="header-actions">
@@ -154,7 +155,7 @@ const OrderDetails = () => {
           <p><strong>Reason:</strong> {order.cancellation.reason}</p>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             Cancelled by {order.cancellation.cancelledBy} on{' '}
-            {new Date(order.cancellation.cancelledAt).toLocaleString()}
+            {new Date(order.cancellation.cancelledAt).toLocaleString('en-PK')}
           </p>
         </div>
       )}
@@ -171,12 +172,12 @@ const OrderDetails = () => {
                 </p>
                 <div className="info-row" style={{ marginTop: '1rem' }}>
                   <span>Estimated Item Cost</span>
-                  <span>₹{order.purchaseDetails?.estimatedItemCost || 0}</span>
+                  <span>{formatPKR(order.purchaseDetails?.estimatedItemCost || 0)}</span>
                 </div>
                 {order.purchaseDetails?.actualItemCost != null && (
                   <div className="info-row">
                     <span>Actual Item Cost</span>
-                    <span>₹{order.purchaseDetails.actualItemCost}</span>
+                    <span>{formatPKR(order.purchaseDetails.actualItemCost)}</span>
                   </div>
                 )}
               </div>
@@ -246,11 +247,11 @@ const OrderDetails = () => {
               </div>
               <div className="info-row">
                 <span>Delivery Fee</span>
-                <span>₹{order.deliveryFee}</span>
+                <span>{formatPKR(order.deliveryFee)}</span>
               </div>
               <div className="info-row total">
                 <span>Total</span>
-                <strong>₹{order.totalAmount}</strong>
+                <strong>{formatPKR(order.totalAmount)}</strong>
               </div>
             </div>
           </section>

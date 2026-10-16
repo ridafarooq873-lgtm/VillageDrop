@@ -141,7 +141,7 @@ export default function AdminRiders() {
                         </td>
                         <td>{r.activeOrders || 0}</td>
                         <td>{r.completedDeliveries ?? 0}</td>
-                        <td className="muted">{new Date(r.createdAt).toLocaleDateString()}</td>
+                        <td className="muted">{new Date(r.createdAt).toLocaleDateString('en-PK')}</td>
                         <td>
                           <div className="row-actions">
                             {r.approvalStatus !== 'approved' && (

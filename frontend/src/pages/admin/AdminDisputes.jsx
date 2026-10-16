@@ -108,12 +108,12 @@ export default function AdminDisputes() {
               {d.resolution && (
                 <p className="muted">
                   <strong>Resolution:</strong> {d.resolution}
-                  {d.resolvedAt && <> · {new Date(d.resolvedAt).toLocaleString()}</>}
+                  {d.resolvedAt && <> · {new Date(d.resolvedAt).toLocaleString('en-PK')}</>}
                 </p>
               )}
 
               <div className="row-actions">
-                <span className="muted">Raised {new Date(d.createdAt).toLocaleString()}</span>
+                <span className="muted">Raised {new Date(d.createdAt).toLocaleString('en-PK')}</span>
                 {d.status !== 'in_progress' && d.status !== 'resolved' && d.status !== 'closed' && (
                   <button
                     className="btn btn-ghost btn-sm"

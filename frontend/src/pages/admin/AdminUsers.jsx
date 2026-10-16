@@ -145,7 +145,7 @@ export default function AdminUsers() {
                           {u.isActive ? 'active' : 'deactivated'}
                         </span>
                       </td>
-                      <td className="muted">{new Date(u.createdAt).toLocaleDateString()}</td>
+                      <td className="muted">{new Date(u.createdAt).toLocaleDateString('en-PK')}</td>
                       <td>
                         {!isMe && (
                           <button

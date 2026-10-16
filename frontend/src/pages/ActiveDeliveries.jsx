@@ -4,6 +4,7 @@ import client from '../api/client.js'
 import { useRealtimeTick, useOrderRooms } from '../context/SocketContext.jsx'
 import OrderCard from '../components/OrderCard.jsx'
 import Spinner from '../components/Spinner.jsx'
+import { formatPKR } from '../utils/currency.js'
 
 // Ordered steps the rider progresses through
 const STEPS = ['assigned_to_rider', 'picked_up', 'out_for_delivery', 'delivered']
@@ -33,7 +34,7 @@ function PurchaseBar({ order }) {
     <div className="purchase-bar">
       <span className={`badge badge-purchase-${order.purchaseStatus}`}>Assisted purchase</span>
       {order.purchaseStatus === 'completed' && (
-        <span className="purchase-amount">Rs {order.purchaseAmount}</span>
+        <span className="purchase-amount">{formatPKR(order.purchaseAmount)}</span>
       )}
       {order.receiptUrl && (
         <a href={order.receiptUrl} target="_blank" rel="noreferrer">

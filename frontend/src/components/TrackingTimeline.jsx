@@ -32,7 +32,7 @@ const TrackingTimeline = ({ updates = [] }) => {
               {update.location && <p className="timeline-location">{update.location}</p>}
               {update.timestamp && (
                 <span className="timeline-time">
-                  {new Date(update.timestamp).toLocaleString()}
+                  {new Date(update.timestamp).toLocaleString('en-PK')}
                 </span>
               )}
             </div>

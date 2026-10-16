@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Package, ShoppingCart } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { createOrder } from '../api/customerApi';
+import { formatPKR } from '../utils/currency.js';
 import './CreateOrder.css';
 
 const CATEGORIES = ['document', 'parcel', 'food', 'grocery', 'medicine', 'electronics', 'clothing', 'other'];
@@ -256,7 +257,7 @@ const CreateOrder = () => {
               />
             </div>
             <div className="form-group">
-              <label>Estimated Item Cost (₹)</label>
+              <label>Estimated Item Cost (PKR)</label>
               <input
                 type="number"
                 min="0"
@@ -360,7 +361,7 @@ const CreateOrder = () => {
 
           <div className="fee-estimate">
             <span>Estimated Total</span>
-            <strong>₹{estimate}</strong>
+            <strong>{formatPKR(estimate)}</strong>
           </div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
             Final amount is confirmed after the rider accepts and the order is processed.

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { acceptRiderOrder, getRiderOrders, setRiderAvailability, updateRiderOrder } from '../api/riderApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
+import { formatPKR } from '../utils/currency.js';
 import './Operations.css';
 
 const formatAddress = (location) =>
@@ -40,7 +41,7 @@ const OrderCard = ({ order, assigned, busy, online, pin, onPinChange, onAccept, 
       </div>
       <div className="operation-meta">
         <span><UserRound size={16} /> {order.customer?.name || 'Customer'}{order.customer?.phone ? ` · ${order.customer.phone}` : ''}</span>
-        <span><Package size={16} /> ₹{order.totalAmount}</span>
+        <span><Package size={16} /> {formatPKR(order.totalAmount)}</span>
       </div>
       {order.orderType === 'rider_assisted_purchase' && order.purchaseDetails?.instructions && (
         <p className="operation-instructions"><strong>Purchase:</strong> {order.purchaseDetails.instructions}</p>

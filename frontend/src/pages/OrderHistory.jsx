@@ -5,6 +5,7 @@ import { getOrders } from '../api/customerApi';
 import StatusBadge from '../components/StatusBadge';
 import LoadingSpinner from '../components/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { formatPKR } from '../utils/currency.js';
 import './OrderHistory.css';
 
 const STATUS_OPTIONS = [
@@ -109,7 +110,7 @@ const OrderHistory = () => {
                     <h3>#{order.orderNumber || order._id.slice(-6).toUpperCase()}</h3>
                     <span className="order-date">
                       {isRap ? 'Rider-Assisted Purchase' : 'Pickup & Delivery'} •{' '}
-                      {new Date(order.createdAt).toLocaleDateString()}
+                      {new Date(order.createdAt).toLocaleDateString('en-PK')}
                     </span>
                   </div>
                   <StatusBadge status={order.status} />
@@ -129,7 +130,7 @@ const OrderHistory = () => {
 
                 <div className="order-card-footer">
                   <span>{isRap ? 'Purchase request' : `${order.items?.length || 0} Item(s)`}</span>
-                  <strong>₹{order.totalAmount}</strong>
+                  <strong>{formatPKR(order.totalAmount)}</strong>
                 </div>
               </div>
             );

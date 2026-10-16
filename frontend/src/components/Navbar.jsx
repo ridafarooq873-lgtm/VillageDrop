@@ -8,7 +8,7 @@ import './Navbar.css';
 
 const formatTime = (iso) => {
   try {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString('en-PK');
   } catch {
     return '';
   }

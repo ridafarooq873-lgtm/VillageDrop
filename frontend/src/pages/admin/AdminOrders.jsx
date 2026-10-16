@@ -3,6 +3,7 @@ import client from '../../api/client.js'
 import { useRealtimeTick } from '../../context/SocketContext.jsx'
 import Spinner from '../../components/Spinner.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
+import { formatPKR } from '../../utils/currency.js'
 
 const STATUSES = [
   'pending',
@@ -167,8 +168,8 @@ export default function AdminOrders() {
                         )}
                       </td>
                       <td><StatusBadge status={o.status} /></td>
-                      <td>Rs {o.total}</td>
-                      <td className="muted">{new Date(o.createdAt).toLocaleDateString()}</td>
+                      <td>{formatPKR(o.total)}</td>
+                      <td className="muted">{new Date(o.createdAt).toLocaleDateString('en-PK')}</td>
                       <td>
                         <div className="row-actions">
                           {o.rider && UNASSIGNABLE.includes(o.status) && (

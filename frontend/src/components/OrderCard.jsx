@@ -1,3 +1,5 @@
+import { formatPKR } from '../utils/currency.js'
+
 export default function OrderCard({ order, children }) {
   const addr = order.deliveryAddress || {}
   const shop = order.shop
@@ -9,7 +11,7 @@ export default function OrderCard({ order, children }) {
           <span className="order-no">{order.orderNumber}</span>
           <span className="order-shop">{shop?.name || 'VillageDrop store'}</span>
         </div>
-        <span className="order-amount">Rs {order.total}</span>
+        <span className="order-amount">{formatPKR(order.total)}</span>
       </div>
 
       <div className="order-route">
@@ -35,7 +37,7 @@ export default function OrderCard({ order, children }) {
       <div className="order-meta">
         <span>Customer: {order.customer?.name || addr.name || '—'}</span>
         {order.customer?.phone && <span>· {order.customer.phone}</span>}
-        <span>· Fee: Rs {order.deliveryFee}</span>
+        <span>· Fee: {formatPKR(order.deliveryFee)}</span>
       </div>
 
       {children && <div className="order-actions">{children}</div>}

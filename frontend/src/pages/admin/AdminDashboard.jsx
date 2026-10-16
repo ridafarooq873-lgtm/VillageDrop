@@ -4,6 +4,7 @@ import client from '../../api/client.js'
 import { useRealtimeTick } from '../../context/SocketContext.jsx'
 import Spinner from '../../components/Spinner.jsx'
 import StatusBadge from '../../components/StatusBadge.jsx'
+import { formatPKR } from '../../utils/currency.js'
 
 const STATUS_LABEL = {
   pending: 'Pending',
@@ -89,8 +90,8 @@ export default function AdminDashboard() {
         <Stat value={orders.active} label="Active now" />
         <Stat value={orders.unassigned} label="Unassigned" tone={orders.unassigned > 0 ? 'amber' : undefined} />
         <Stat value={orders.delivered} label="Delivered" tone="green" />
-        <Stat value={`Rs ${revenue.deliveryFees}`} label="Delivery fees earned" />
-        <Stat value={`Rs ${revenue.orderValue}`} label="Gross order value" />
+        <Stat value={formatPKR(revenue.deliveryFees)} label="Delivery fees earned" />
+        <Stat value={formatPKR(revenue.orderValue)} label="Gross order value" />
       </div>
 
       <div className="stat-row">
@@ -99,7 +100,7 @@ export default function AdminDashboard() {
         <Stat value={riders.pending} label="Awaiting approval" tone={riders.pending > 0 ? 'amber' : undefined} />
         <Stat value={users.total} label="Users" />
         <Stat value={disputes.open + disputes.in_progress} label="Open disputes" tone={disputes.open > 0 ? 'red' : undefined} />
-        <Stat value={`Rs ${fees.base} + Rs ${fees.perKm}/km`} label="Current fee config" />
+        <Stat value={`${formatPKR(fees.base)} + ${formatPKR(fees.perKm)}/km`} label="Current fee config" />
       </div>
 
       <div className="grid-2-admin">
@@ -169,7 +170,7 @@ export default function AdminDashboard() {
                   <td>{o.shop?.name || '—'}</td>
                   <td>{o.rider ? o.rider.riderId || o.rider.user?.name || '—' : <span className="muted">unassigned</span>}</td>
                   <td><StatusBadge status={o.status} /></td>
-                  <td>Rs {o.total}</td>
+                  <td>{formatPKR(o.total)}</td>
                 </tr>
               ))}
             </tbody>

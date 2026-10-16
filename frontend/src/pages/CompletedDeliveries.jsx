@@ -3,6 +3,7 @@ import client from '../api/client.js'
 import { useRealtimeTick } from '../context/SocketContext.jsx'
 import OrderCard from '../components/OrderCard.jsx'
 import Spinner from '../components/Spinner.jsx'
+import { formatPKR } from '../utils/currency.js'
 
 export default function CompletedDeliveries() {
   const [orders, setOrders] = useState([])
@@ -44,8 +45,8 @@ export default function CompletedDeliveries() {
         <div className="empty">No completed deliveries yet.</div>
       ) : (
         <>
-          <p className="muted">{orders.length} delivered order{orders.length === 1 ? '' : 's'}. Earned Rs{' '}
-            {orders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0)} in delivery fees.
+          <p className="muted">{orders.length} delivered order{orders.length === 1 ? '' : 's'}. Earned{' '}
+            {formatPKR(orders.reduce((sum, o) => sum + (o.deliveryFee || 0), 0))} in delivery fees.
           </p>
           <div className="order-list">
             {orders.map((order) => (
@@ -53,7 +54,7 @@ export default function CompletedDeliveries() {
                 <div className="completed-meta">
                   {order.requiresPurchase && (
                     <span className="purchase-amount">
-                      Purchased: Rs {order.purchaseAmount}
+                      Purchased: {formatPKR(order.purchaseAmount)}
                       {order.receiptUrl && (
                         <>
                           {' · '}
@@ -70,7 +71,7 @@ export default function CompletedDeliveries() {
                     </span>
                   )}
                   <span className="delivered-at">
-                    Delivered {order.deliveredAt ? new Date(order.deliveredAt).toLocaleString() : ''}
+                    Delivered {order.deliveredAt ? new Date(order.deliveredAt).toLocaleString('en-PK') : ''}
                   </span>
                 </div>
               </OrderCard>

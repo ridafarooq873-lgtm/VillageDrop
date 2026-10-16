@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { getAdminOrders, getAdminOverview, getAdminRiders, reviewRider, updateAdminOrder } from '../api/adminApi';
 import LoadingSpinner from '../components/LoadingSpinner';
 import StatusBadge from '../components/StatusBadge';
+import { formatPKR } from '../utils/currency.js';
 import './Operations.css';
 
 const STATUS_TRANSITIONS = {
@@ -157,7 +158,7 @@ const AdminPortal = () => {
                     <div className="operation-route">
                       <p><strong>Pickup:</strong> {order.pickup?.address}</p>
                       <p><strong>Delivery:</strong> {order.delivery?.address}</p>
-                      <p><strong>Rider:</strong> {order.rider?.user?.name || 'Unassigned'} · <strong>Total:</strong> ₹{order.totalAmount}</p>
+                      <p><strong>Rider:</strong> {order.rider?.user?.name || 'Unassigned'} · <strong>Total:</strong> {formatPKR(order.totalAmount)}</p>
                     </div>
                     {transitions.length > 0 && (
                       <div className="operation-actions admin-status-actions">

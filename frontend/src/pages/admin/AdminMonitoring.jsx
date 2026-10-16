@@ -53,7 +53,7 @@ export default function AdminMonitoring() {
       </div>
 
       {error && <div className="banner banner-rejected">{error}</div>}
-      <p className="muted">Auto-refreshes every 30 seconds · last updated {new Date().toLocaleTimeString()}</p>
+      <p className="muted">Auto-refreshes every 30 seconds · last updated {new Date().toLocaleTimeString('en-PK')}</p>
 
       <div className="stat-row">
         <div className="stat">

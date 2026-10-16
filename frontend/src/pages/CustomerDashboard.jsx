@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getDashboard } from '../api/customerApi.js'
 import StatusBadge from '../components/StatusBadge.jsx'
 import Spinner from '../components/Spinner.jsx'
+import { formatPKR } from '../utils/currency.js'
 
 export default function CustomerDashboard() {
   const [dashboard, setDashboard] = useState(null)
@@ -44,10 +45,10 @@ export default function CustomerDashboard() {
               <Link className="order-card" key={order._id} to={`/orders/${order._id}`}>
                 <div>
                   <strong>#{order.orderNumber || order._id.slice(-6).toUpperCase()}</strong>
-                  <div className="muted">{new Date(order.createdAt).toLocaleDateString()}</div>
+                  <div className="muted">{new Date(order.createdAt).toLocaleDateString('en-PK')}</div>
                 </div>
                 <StatusBadge status={order.status} />
-                <strong>Rs {order.totalAmount}</strong>
+                <strong>{formatPKR(order.totalAmount)}</strong>
               </Link>
             ))}
           </div>
