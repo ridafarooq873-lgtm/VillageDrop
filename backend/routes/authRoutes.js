@@ -402,5 +402,60 @@ router.post(
     })
   })
 )
+/**
+ * @route POST /api/auth/register
+ * @desc Generic register - for frontend compatibility (customer/rider)
+ */
+router.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const { name, fullName, email, phone, password, address, accountType, role } = req.body
+    const finalName = name || fullName
+    const finalRole = (accountType || role || 'customer').toLowerCase()
 
+    if (!finalName || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' })
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() })
+    if (existing) {
+      return res.status(409).json({ message: 'Email already in use' })
+    }
+
+    const user = await User.create({
+      name: finalName.trim(),
+      email: email.toLowerCase().trim(),
+      phone: phone?.trim(),
+      password,
+      role: finalRole === 'rider' ? 'rider' : 'customer',
+      address,
+    })
+
+    let rider = null
+    if (finalRole === 'rider') {
+      rider = await Rider.create({
+        user: user._id,
+        approvalStatus: 'pending',
+        isApproved: false,
+        isOnline: false,
+        availabilityStatus: 'offline',
+      })
+    }
+
+    const tokens = await issueTokens(user)
+
+    res.status(201).json({
+      message: finalRole === 'rider' ? 'Rider registered successfully. Awaiting admin approval.' : 'Customer registered successfully',
+      ...tokens,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+      },
+      rider,
+    })
+  })
+)
 export default router
