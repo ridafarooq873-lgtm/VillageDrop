@@ -1,13 +1,9 @@
 {
-  "services": {
-    "backend": {
-      "rootDirectory": "backend",
-      "framework": "express"
-    },
-    "frontend": {
-      "rootDirectory": "frontend",
-      "framework": "vite",
-      "route": "/"
-    }
-  }
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "server.js" }
+  ]
 }
