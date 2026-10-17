@@ -111,8 +111,9 @@ async function startServer() {
 await connectDB()
 await loadFeeConfig()
 
-// Vercel ke liye export zaroori hai
-export default app
+// Vercel ke liye export zaroori hai - CommonJS
+module.exports = app
+module.exports.default = app
 
 if (!process.env.VERCEL) {
   startServer().catch((error) => {
