@@ -108,12 +108,36 @@ async function startServer() {
   }
 }
 
-await connectDB()
-await loadFeeConfig()
+async function startServer() {
+  await loadFeeConfig()
+  if (!process.env.VERCEL) {
+    await connectDB()
+    httpServer.listen(PORT, () => {
+      console.log(`[server] listening on http://localhost:${PORT}`)
+    })
+  }
+}
 
-// Vercel ke liye export zaroori hai - CommonJS
+// Vercel ke liye - DB connect lazy
+let isConnected = false
+async function ensureDB() {
+  if (!isConnected) {
+    await connectDB()
+    await loadFeeConfig()
+    isConnected = true
+  }
+}
+
+// Har request se pehle DB check
+app.use(async (req, res, next) => {
+  if (process.env.VERCEL) {
+    await ensureDB()
+  }
+  next()
+})
+
+// Vercel export - IMPORTANT
 module.exports = app
-module.exports.default = app
 
 if (!process.env.VERCEL) {
   startServer().catch((error) => {
