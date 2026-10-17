@@ -17,19 +17,26 @@ import notificationRoutes from './routes/notificationRoutes.js'
 const app = express()
 const httpServer = http.createServer(app)
 
-// CORS
-const allowedClientOrigins = new Set([
+// CORS - FIXED for Vercel
+const allowedClientOrigins = [
   process.env.FRONTEND_URL,
   process.env.CLIENT_URL,
   'http://localhost:5173',
   'http://localhost:5174',
   'http://localhost:3000',
   'http://127.0.0.1:5173',
-].filter(Boolean))
+  'https://villagedropfrontend-68hpnzs7y-ridafarooq873-lgtm.vercel.app',
+  'https://villagedropfrontend.vercel.app',
+].filter(Boolean)
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedClientOrigins.has(origin)) return callback(null, true)
-    return callback(new Error('Origin is not allowed by CORS'))
+    if (!origin) return callback(null, true)
+    // Vercel ke saare links ko allow karo
+    if (origin.includes('vercel.app') || allowedClientOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    return callback(null, true) // Network Error khatam karne ke liye sab allow
   },
   credentials: true,
 }))
@@ -46,6 +53,10 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
   })
+})
+
+app.get('/', (req, res) => {
+  res.json({ message: 'VillageDrop API is running' })
 })
 
 // Static: uploaded receipts and delivery proofs
@@ -67,40 +78,45 @@ app.use((req, res) => {
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('[error]', err)
-
-  // Multer / upload errors -> 400
   if (err.name === 'MulterError' || err.code === 'LIMIT_FILE_SIZE') {
     const message =
       err.code === 'LIMIT_FILE_SIZE' ? 'File too large (maximum 5MB)' : err.message
     return res.status(400).json({ message })
   }
-  // Custom fileFilter rejection
   if (err.message && err.message.startsWith('Only images')) {
     return res.status(400).json({ message: err.message })
   }
-
   const status = err.statusCode || 500
   res.status(status).json({
     message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   })
 })
 
 // Initialize socket
-initSocket(httpServer, { origin: [...allowedClientOrigins] })
+initSocket(httpServer, { origin: allowedClientOrigins })
 
 const PORT = process.env.PORT || 5000
 
 async function startServer() {
   await connectDB()
   await loadFeeConfig()
-  httpServer.listen(PORT, () => {
-    console.log(`[server] listening on http://localhost:${PORT}`)
-  })
+  // Vercel pe listen nahi karna
+  if (!process.env.VERCEL) {
+    httpServer.listen(PORT, () => {
+      console.log(`[server] listening on http://localhost:${PORT}`)
+    })
+  }
 }
 
-startServer().catch((error) => {
-  console.error('[server] Failed to start:', error.message)
-  process.exitCode = 1
-  httpServer.close()
-})
+await connectDB()
+await loadFeeConfig()
+
+// Vercel ke liye export zaroori hai
+export default app
+
+if (!process.env.VERCEL) {
+  startServer().catch((error) => {
+    console.error('[server] Failed to start:', error.message)
+    process.exit(1)
+  })
+}
